@@ -1,0 +1,13 @@
+{
+  "name": "ricochet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A tiny browser instrument: bouncing-ball sequencer + touch grid. Sound comes from the phone; plug it into a mixer.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/",
+    "build": "node scripts/build.mjs",
+    "smoke": "node scripts/smoke.mjs",
+    "shots": "node scripts/shots.mjs"
+  }
+}
