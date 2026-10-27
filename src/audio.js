@@ -144,6 +144,15 @@ export function createAudio({ volume = 0.6 } = {}) {
       scheduleVoice(ctx, master, name, freq, ctx.currentTime, velocity);
       return true;
     },
+    // Same as play, but at a scheduled AudioContext time (Link
+    // quantization). Clamped to now so a stale estimate never throws.
+    playAt(name, freq, when, velocity = 1) {
+      if (ctx.state !== 'running' || muted || active >= 24) return false;
+      active += 1;
+      setTimeout(() => { active -= 1; }, 1500);
+      scheduleVoice(ctx, master, name, freq, Math.max(when, ctx.currentTime), velocity);
+      return true;
+    },
     setVolume(v) {
       vol = Math.max(0, Math.min(1, v));
       if (!muted) master.gain.setTargetAtTime(vol, ctx.currentTime, 0.02);

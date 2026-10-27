@@ -102,3 +102,39 @@ setup; the app only needs to make sound, not speak MIDI.
 
 Not verified: playback on physical iOS hardware and the actual EP-136
 hookup — tested only in headless Chrome with a measured output signal.
+
+## Ableton Link sync (v3)
+
+Request: a button to sync the instrument to Ableton Link on the same
+wifi.
+
+- **A browser cannot join a Link session.** Link discovers peers over
+  UDP multicast; the web platform exposes no UDP. Every browser-Link
+  project we found uses a local bridge (e.g.
+  github.com/vigliensoni/browser-sync-ableton-link,
+  github.com/artfwo/aalink-js). Of the five implementations we checked,
+  every one wraps Ableton's official C++ SDK; we found none implemented
+  in browser-runnable JavaScript. Ableton documents two integration
+  routes (iOS LinkKit, cross-platform C++), neither of which runs in a
+  web page.
+- **The bridge is Python + aalink** (pypi.org/project/aalink): prebuilt
+  macOS wheels, no compiler, asyncio-native. Node alternatives
+  (node-abletonlink, @ktamas77/abletonlink, aalink-js) all compile C++
+  at install time.
+- **The bridge also serves the app.** A hosted https page cannot open a
+  ws:// connection to a LAN device (mixed content), so the app must be
+  loaded from the bridge URL for the link key to appear.
+- **Sync semantics:** bounce/grid note triggers are quantized onto the
+  Link session's 16th-note grid via scheduled Web Audio times
+  (scheduleVoice already supports future times). Physics stays
+  free-running; Link owns when notes land. Tempo follows the session;
+  the bridge relays state at 25 Hz and the client extrapolates between
+  updates.
+- Verified end-to-end in `scripts/link-smoke.mjs`: real aalink session,
+  live tempo-change propagation, every scheduled note checked against
+  the 16th grid, beat indicator, disconnect behavior. **Scope: bridge
+  and browser ran on the same host**, so this validates the logic, not
+  network timing. Cross-device latency/jitter over wifi is unmeasured;
+  interop with Ableton Live and behavior on a physical iPhone are
+  untested. Known limitations and the corrections required before this
+  is ready are listed in `link/README.md`.

@@ -15,9 +15,11 @@ import {
 import { cellFromPoint, brushCells, makeTouchTracker } from './grid.js';
 import { VOICES, createAudio, scheduleVoice } from './audio.js';
 import { SCALE_NAMES, gridFreq } from './notes.js';
+import { LinkSync, probeBridge } from './link.js';
 
 const params = new URLSearchParams(location.search);
 const SMOKE = params.has('smoke');
+const LINKTEST = params.has('linktest');
 const SHOT = params.get('shot'); // 'bounce' | 'grid' for deterministic screenshots
 
 const GRID_COLS = 10;
@@ -54,6 +56,9 @@ const app = {
   hitCount: 0,
 };
 
+let linkSync = null;
+const btnLink = document.getElementById('btn-link');
+
 // ---------- layout ----------
 
 function viewSize() {
@@ -88,8 +93,50 @@ function gridRect() {
 // ---------- sound ----------
 
 function play(freq, velocity = 1) {
-  if (app.audio) app.audio.play(app.sound, freq, velocity);
+  if (!app.audio) return;
+  if (linkSync && linkSync.isOn) {
+    const q = linkSync.quantizedTime(app.audio.ctx);
+    if (LINKTEST) (window.__QUANT = window.__QUANT || []).push(q);
+    app.audio.playAt(app.sound, freq, q.when, velocity);
+    return;
+  }
+  app.audio.play(app.sound, freq, velocity);
 }
+
+// ---------- ableton link ----------
+
+function linkCaption(msg) {
+  const el = document.querySelector('#screen-caption .caption-right');
+  if (linkSync && linkSync.isOn && msg) {
+    el.textContent = `link \u00b7 ${msg.bpm.toFixed(1)} bpm \u00b7 ${msg.peers + 1} peer${msg.peers ? 's' : ''}`;
+  } else {
+    el.textContent = 'audio out \u2192 mixer';
+  }
+}
+
+function toggleLink() {
+  if (linkSync && linkSync.isOn) {
+    linkSync.disconnect();
+    linkSync = null;
+    btnLink.classList.remove('active');
+    linkCaption(null);
+    return;
+  }
+  linkSync = new LinkSync({
+    onState: linkCaption,
+    onStatus: (st) => {
+      btnLink.classList.toggle('active', st === 'on');
+      if (st !== 'on') linkCaption(null);
+    },
+  });
+  linkSync.connect(`ws://${location.host}/ws`);
+}
+
+btnLink.addEventListener('click', toggleLink);
+
+// The link key only exists when the app is served by the bridge
+// (the hosted Pages copy cannot reach a LAN websocket from https).
+probeBridge().then((info) => { if (info) btnLink.hidden = false; });
 
 // ---------- grid input ----------
 
@@ -227,6 +274,15 @@ function frame(t) {
   const { w, h } = viewSize();
   c2d.fillStyle = BG;
   c2d.fillRect(0, 0, w, h);
+
+  if (linkSync && linkSync.isOn && linkSync.state) {
+    const beatInt = Math.floor(linkSync.currentBeat());
+    if (beatInt !== window.__lastBeatInt) {
+      window.__lastBeatInt = beatInt;
+      btnLink.classList.add('beat');
+      setTimeout(() => btnLink.classList.remove('beat'), 110);
+    }
+  }
 
   if (app.mode === 'bounce') {
     if (!app.paused) {
@@ -388,6 +444,7 @@ function start(withAudio) {
 document.getElementById('btn-start').addEventListener('click', () => start(true));
 
 window.__RIC = app;
+window.__LINKCTL = { get: () => linkSync, toggle: toggleLink };
 resize();
 buildControls();
 window.addEventListener('resize', resize);

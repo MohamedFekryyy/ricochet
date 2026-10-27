@@ -81,6 +81,10 @@ body {
 .key-sm.off { color: var(--ink-soft); }
 .key-sm.off .led { background: rgba(28, 28, 26, 0.18); box-shadow: none; }
 
+.key-link { width: auto; padding: 0 10px; font-size: 10px; }
+.key-link.active { border-color: var(--accent); }
+.key-link.beat .led { background: var(--amber); box-shadow: 0 0 8px rgba(255, 176, 0, 0.9); }
+
 /* ---------- display ---------- */
 
 #screen {
@@ -187,6 +191,7 @@ body {
     <span class="sub">pocket instrument &middot; mk i</span>
   </div>
   <div class="hud-buttons">
+    <button id="btn-link" class="key key-sm key-link" aria-label="Ableton Link sync" title="Ableton Link sync" hidden><span class="led"></span>link</button>
     <button id="btn-pause" class="key key-sm" aria-label="Pause" title="Pause">&#10074;&#10074;</button>
     <button id="btn-mute" class="key key-sm" aria-label="Mute" title="Mute">&#9834;</button>
   </div>
@@ -660,6 +665,15 @@ function createAudio({ volume = 0.6 } = {}) {
       scheduleVoice(ctx, master, name, freq, ctx.currentTime, velocity);
       return true;
     },
+    // Same as play, but at a scheduled AudioContext time (Link
+    // quantization). Clamped to now so a stale estimate never throws.
+    playAt(name, freq, when, velocity = 1) {
+      if (ctx.state !== 'running' || muted || active >= 24) return false;
+      active += 1;
+      setTimeout(() => { active -= 1; }, 1500);
+      scheduleVoice(ctx, master, name, freq, Math.max(when, ctx.currentTime), velocity);
+      return true;
+    },
     setVolume(v) {
       vol = Math.max(0, Math.min(1, v));
       if (!muted) master.gain.setTargetAtTime(vol, ctx.currentTime, 0.02);
@@ -676,6 +690,106 @@ function createAudio({ volume = 0.6 } = {}) {
 }
 
 
+// ---- link.js ----
+// Ableton Link sync client.
+// Browsers cannot join a Link session directly (Link needs UDP multicast
+// on the LAN; the web platform has no UDP), so ricochet talks to the
+// companion bridge (link/bridge.py) over WebSocket. The bridge joins the
+// session and relays tempo/beat/phase; this module follows that timeline
+// and quantizes note triggering onto its beat grid.
+
+const GRID_SUBDIVISION = 0.25; // 16th notes in 4/4
+
+// Smallest grid multiple at or after `beat` (a hit exactly on the grid
+// plays immediately).
+function nextGridBeat(beat, sub = GRID_SUBDIVISION) {
+  return Math.ceil(beat / sub - 1e-9) * sub + 0; // + 0 normalizes -0
+}
+
+class LinkSync {
+  constructor({ onState, onStatus } = {}) {
+    this.onState = onState || (() => {});
+    this.onStatus = onStatus || (() => {});
+    this.ws = null;
+    this.state = null; // last { bpm, beat, phase, quantum, peers, playing }
+    this.recvPerf = 0; // performance.now() when that state arrived
+    this.isOn = false;
+  }
+
+  connect(url) {
+    this.disconnect();
+    const ws = new WebSocket(url);
+    this.ws = ws;
+    ws.onopen = () => {
+      this.isOn = true;
+      this.onStatus('on');
+    };
+    ws.onmessage = (ev) => {
+      let msg;
+      try { msg = JSON.parse(ev.data); } catch { return; }
+      if (msg.t !== 'state') return;
+      this.state = msg;
+      this.recvPerf = performance.now();
+      this.onState(msg);
+    };
+    ws.onclose = () => {
+      this.isOn = false;
+      this.state = null;
+      this.onStatus('off');
+    };
+    ws.onerror = () => ws.close();
+  }
+
+  disconnect() {
+    if (this.ws) {
+      this.ws.onclose = null;
+      this.ws.close();
+      this.ws = null;
+    }
+    this.isOn = false;
+    this.state = null;
+  }
+
+  get bpm() {
+    return this.state ? this.state.bpm : 0;
+  }
+
+  // Continuous Link beat position right now, extrapolated from the last
+  // broadcast (40ms cadence; LAN jitter is the error, a few ms).
+  currentBeat(perfNow = performance.now()) {
+    if (!this.state) return 0;
+    const elapsedBeats = ((perfNow - this.recvPerf) / 1000) * (this.state.bpm / 60);
+    return this.state.beat + elapsedBeats;
+  }
+
+  // AudioContext time of the next 16th-note boundary. Assumes tempo is
+  // constant over the sub-second horizon, which holds in practice.
+  quantizedTime(ctx, perfNow = performance.now()) {
+    const beat = this.currentBeat(perfNow);
+    const gridBeat = nextGridBeat(beat);
+    const dtBeats = gridBeat - beat;
+    return {
+      when: ctx.currentTime + (dtBeats * 60) / this.state.bpm,
+      beat,
+      gridBeat,
+    };
+  }
+}
+
+// The bridge exposes /link-info on the same origin it serves the app
+// from; the hosted Pages copy has no such endpoint, so the link key
+// only appears when the app is actually reachable through a bridge.
+async function probeBridge(timeoutMs = 900) {
+  try {
+    const res = await fetch('/link-info', { signal: AbortSignal.timeout(timeoutMs) });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+
 // ---- main.js ----
 // Ricochet: a tiny browser instrument.
 // Bounce mode: balls bounce inside a polygon; each wall hit plays a note.
@@ -686,8 +800,10 @@ function createAudio({ volume = 0.6 } = {}) {
 
 
 
+
 const params = new URLSearchParams(location.search);
 const SMOKE = params.has('smoke');
+const LINKTEST = params.has('linktest');
 const SHOT = params.get('shot'); // 'bounce' | 'grid' for deterministic screenshots
 
 const GRID_COLS = 10;
@@ -724,6 +840,9 @@ const app = {
   hitCount: 0,
 };
 
+let linkSync = null;
+const btnLink = document.getElementById('btn-link');
+
 // ---------- layout ----------
 
 function viewSize() {
@@ -758,8 +877,50 @@ function gridRect() {
 // ---------- sound ----------
 
 function play(freq, velocity = 1) {
-  if (app.audio) app.audio.play(app.sound, freq, velocity);
+  if (!app.audio) return;
+  if (linkSync && linkSync.isOn) {
+    const q = linkSync.quantizedTime(app.audio.ctx);
+    if (LINKTEST) (window.__QUANT = window.__QUANT || []).push(q);
+    app.audio.playAt(app.sound, freq, q.when, velocity);
+    return;
+  }
+  app.audio.play(app.sound, freq, velocity);
 }
+
+// ---------- ableton link ----------
+
+function linkCaption(msg) {
+  const el = document.querySelector('#screen-caption .caption-right');
+  if (linkSync && linkSync.isOn && msg) {
+    el.textContent = `link \u00b7 ${msg.bpm.toFixed(1)} bpm \u00b7 ${msg.peers + 1} peer${msg.peers ? 's' : ''}`;
+  } else {
+    el.textContent = 'audio out \u2192 mixer';
+  }
+}
+
+function toggleLink() {
+  if (linkSync && linkSync.isOn) {
+    linkSync.disconnect();
+    linkSync = null;
+    btnLink.classList.remove('active');
+    linkCaption(null);
+    return;
+  }
+  linkSync = new LinkSync({
+    onState: linkCaption,
+    onStatus: (st) => {
+      btnLink.classList.toggle('active', st === 'on');
+      if (st !== 'on') linkCaption(null);
+    },
+  });
+  linkSync.connect(`ws://${location.host}/ws`);
+}
+
+btnLink.addEventListener('click', toggleLink);
+
+// The link key only exists when the app is served by the bridge
+// (the hosted Pages copy cannot reach a LAN websocket from https).
+probeBridge().then((info) => { if (info) btnLink.hidden = false; });
 
 // ---------- grid input ----------
 
@@ -897,6 +1058,15 @@ function frame(t) {
   const { w, h } = viewSize();
   c2d.fillStyle = BG;
   c2d.fillRect(0, 0, w, h);
+
+  if (linkSync && linkSync.isOn && linkSync.state) {
+    const beatInt = Math.floor(linkSync.currentBeat());
+    if (beatInt !== window.__lastBeatInt) {
+      window.__lastBeatInt = beatInt;
+      btnLink.classList.add('beat');
+      setTimeout(() => btnLink.classList.remove('beat'), 110);
+    }
+  }
 
   if (app.mode === 'bounce') {
     if (!app.paused) {
@@ -1058,6 +1228,7 @@ function start(withAudio) {
 document.getElementById('btn-start').addEventListener('click', () => start(true));
 
 window.__RIC = app;
+window.__LINKCTL = { get: () => linkSync, toggle: toggleLink };
 resize();
 buildControls();
 window.addEventListener('resize', resize);
