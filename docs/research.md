@@ -132,9 +132,15 @@ wifi.
   updates.
 - Verified end-to-end in `scripts/link-smoke.mjs`: real aalink session,
   live tempo-change propagation, every scheduled note checked against
-  the 16th grid, beat indicator, disconnect behavior. **Scope: bridge
-  and browser ran on the same host**, so this validates the logic, not
-  network timing. Cross-device latency/jitter over wifi is unmeasured;
-  interop with Ableton Live and behavior on a physical iPhone are
-  untested. Known limitations and the corrections required before this
-  is ready are listed in `link/README.md`.
+  the 16th grid, beat indicator, disconnect behavior, access-key gating,
+  origin rejection, read-only-by-default remote tempo (opt-in via
+  `--allow-remote-tempo`). `scripts/link-net-smoke.mjs` adds a TCP delay
+  proxy (60 ms each way) between Chrome and the bridge: the client's
+  ping/pong offset estimate (min-RTT window, 1 Hz) tracked the bridge
+  timeline within ~1 ms, the 1.5 s staleness watchdog flagged a frozen
+  connection with a visible "link lost" state, and the link recovered
+  when the network returned. **Scope: one machine with a software delay
+  proxy** - real wifi adds asymmetry and jitter this does not reproduce,
+  so no real-world sync-accuracy figure is claimed. Interop with
+  Ableton Live and behavior on a physical iPhone remain untested; what
+  is required before this is ready is listed in `link/README.md`.

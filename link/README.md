@@ -5,10 +5,10 @@ from the Link session (Ableton Live, an EP-136, or any other Link app),
 and every note the instrument plays is quantized onto the shared 16th-note
 grid.
 
-> **Status: experimental.** Tested only with the bridge and the browser on
-> the same machine, and not yet against Ableton Live or a physical iPhone.
-> No sync-accuracy claim is made. Read "Known limitations" before relying
-> on it.
+> **Status: experimental.** All testing so far is automated and local:
+> same-host end-to-end, plus a simulated-delay network test. Not yet
+> verified against Ableton Live, on a physical iPhone, or across real
+> wifi. Read "Known limitations" before relying on it.
 
 ## Why a bridge exists
 
@@ -36,15 +36,44 @@ node scripts/build.mjs     # only if dist/ricochet.html is missing
 python3 link/bridge.py
 ```
 
-It prints a URL like `http://192.168.1.42:8780`. Open that on the phone
-(same wifi), tap power, then tap the **link** key (it only appears when
-the app is served by the bridge). The screen caption shows the session
-tempo and peer count; the key's LED pulses on the beat.
+The bridge prints an access URL with a fresh random key, like
+`http://192.168.1.42:8780/?key=x7Kq...`. Open exactly that URL on the
+phone (same wifi), tap power, then tap the **link** key (it only appears
+when the app is served by the bridge). The header shows the session tempo
+and peer count; the key's LED pulses on the beat.
 
 Enable Link in Ableton Live (the Link toggle in the top-left bar). Tempo
-changes in Live land in ricochet within a beat; the bounce/grid notes you
-trigger snap to the next 16th of the shared grid. Options: `--port`,
-`--bpm` (starting tempo before Live joins).
+changes in Live land in ricochet; the bounce/grid notes you trigger snap
+to the next 16th of the shared grid. Options: `--port`, `--bpm`
+(starting tempo before Live joins).
+
+## Safety defaults
+
+- **Per-run access key.** Every page and the websocket endpoint require
+  the random key printed at startup; anything without it gets a 404. The
+  key changes on every launch, so only someone who sees the bridge's
+  terminal output can connect. Treat the printed URL as a secret.
+- **Same-origin websockets.** Handshakes whose Origin header points at a
+  different host are rejected.
+- **Read-only sync.** Clients can follow the session but cannot change
+  it; remote tempo commands are ignored unless you start the bridge with
+  `--allow-remote-tempo` (which lets any keyed client set the tempo Live
+  follows - home wifi only).
+- **Staleness watchdog.** If no message arrives for ~1.5 s (Mac sleeps,
+  wifi drops), the app shows "link lost", stops quantizing to the stale
+  timeline, and falls back to immediate playback; it recovers by itself
+  when the connection returns.
+
+## Clock sync
+
+The client pings the bridge once per second; the bridge answers with its
+Link beat position and its own millisecond clock. The client keeps the
+lowest-RTT samples in a short window and estimates the offset between
+the two clocks from them, then reads the shared timeline on the bridge's
+clock. This corrects constant network delay but assumes the delay is
+roughly symmetric (same lag each way) - the standard assumption for LAN
+sync. The bridge also stamps its clock on every state broadcast as a
+fallback reference.
 
 ## What syncs and what doesn't
 
@@ -56,33 +85,24 @@ trigger snap to the next 16th of the shared grid. Options: `--port`,
 
 ## Known limitations
 
-- **Same-host test scope.** All automated verification ran with the
-  bridge and the browser on one machine, where network delay is near
-  zero. Timing behavior across real wifi devices is unmeasured; any
-  latency/jitter figures discussed anywhere are estimates, not
-  measurements.
-- **No clock-offset estimation.** The app re-anchors on each 40 ms state
-  broadcast and extrapolates between them; it does not estimate one-way
-  delay or clock offset, so a constant network lag shifts the quantized
-  grid by that lag.
-- **No staleness timeout.** If the websocket freezes without a close
-  frame (e.g. the Mac sleeps), the app keeps quantizing to a stale
-  timeline and the link key can show a falsely-linked state until TCP
-  times out.
-- **Unauthenticated remote tempo.** The bridge binds all interfaces and
-  accepts tempo changes from any connected client, so anyone on the
-  network could change the shared session tempo (which Live follows).
-  Home wifi only. Read-only sync should be the default before this is
-  considered ready.
+- **Simulated-network test scope.** Timing verification ran on one
+  machine behind a software delay proxy (60 ms added each way): the
+  client's beat estimate stayed within ~1 ms of the bridge timeline in
+  that setup, and the watchdog flagged a stalled connection. Real wifi
+  adds asymmetric delay and jitter this test does not reproduce, so no
+  real-world accuracy figure is claimed.
 - **Not tested against Ableton Live or on a physical iPhone.** The
   bridge speaks Link through Ableton's official SDK (via aalink), but
-  real-session interop is unverified.
+  real-session interop is unverified, and mobile Safari's
+  playback/scheduling behavior is untested.
+- **Anyone with the printed URL can follow the session.** The key gates
+  casual access on a home network; it is not authentication against a
+  determined attacker on the same LAN. Don't run the bridge on networks
+  you don't trust.
 
 ## Required before this is ready
 
-1. Clock offset / RTT estimation (ping-pong), or a measured,
-   evidence-backed tolerance.
-2. Staleness timeout with a visible disconnect state on the link key.
-3. Read-only sync by default; remote tempo control opt-in or removed.
-4. Origin/access restriction on the websocket endpoint.
-5. Cross-device measurement on real wifi, and an interop test with Live.
+1. Cross-device measurement on real wifi (phone + Mac), with observed
+   sync error recorded.
+2. Interop test with Ableton Live running an actual set.
+3. A run on the physical iPhone it will be used on.

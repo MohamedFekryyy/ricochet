@@ -15,7 +15,7 @@ import {
 import { cellFromPoint, brushCells, makeTouchTracker } from './grid.js';
 import { VOICES, createAudio, scheduleVoice } from './audio.js';
 import { SCALE_NAMES, gridFreq } from './notes.js';
-import { LinkSync, probeBridge } from './link.js';
+import { LinkSync, probeBridge, bridgeWsUrl } from './link.js';
 
 const params = new URLSearchParams(location.search);
 const SMOKE = params.has('smoke');
@@ -96,21 +96,29 @@ function play(freq, velocity = 1) {
   if (!app.audio) return;
   if (linkSync && linkSync.isOn) {
     const q = linkSync.quantizedTime(app.audio.ctx);
-    if (LINKTEST) (window.__QUANT = window.__QUANT || []).push(q);
-    app.audio.playAt(app.sound, freq, q.when, velocity);
-    return;
+    if (q) {
+      if (LINKTEST) (window.__QUANT = window.__QUANT || []).push(q);
+      app.audio.playAt(app.sound, freq, q.when, velocity);
+      return;
+    }
+    // stale timeline: fall through to immediate playback
   }
   app.audio.play(app.sound, freq, velocity);
 }
 
 // ---------- ableton link ----------
 
-function linkCaption(msg) {
-  const el = document.querySelector('#screen-caption .caption-right');
-  if (linkSync && linkSync.isOn && msg) {
+function updateLinkStatus(msg) {
+  const el = document.getElementById('link-status');
+  if (linkSync && linkSync.isOn && !linkSync.stale && msg) {
+    el.hidden = false;
     el.textContent = `link \u00b7 ${msg.bpm.toFixed(1)} bpm \u00b7 ${msg.peers + 1} peer${msg.peers ? 's' : ''}`;
+  } else if (linkSync && linkSync.stale) {
+    el.hidden = false;
+    el.textContent = 'link lost \u00b7 tap link to retry';
   } else {
-    el.textContent = 'audio out \u2192 mixer';
+    el.hidden = true;
+    el.textContent = '';
   }
 }
 
@@ -119,17 +127,21 @@ function toggleLink() {
     linkSync.disconnect();
     linkSync = null;
     btnLink.classList.remove('active');
-    linkCaption(null);
+    updateLinkStatus(null);
     return;
   }
   linkSync = new LinkSync({
-    onState: linkCaption,
+    onState: updateLinkStatus,
     onStatus: (st) => {
       btnLink.classList.toggle('active', st === 'on');
-      if (st !== 'on') linkCaption(null);
+      if (st === 'stale') updateLinkStatus(null); // shows the link-lost hint
+      if (st === 'off') {
+        linkSync = null;
+        updateLinkStatus(null);
+      }
     },
   });
-  linkSync.connect(`ws://${location.host}/ws`);
+  linkSync.connect(bridgeWsUrl());
 }
 
 btnLink.addEventListener('click', toggleLink);
@@ -163,16 +175,13 @@ function gridTriggerAt(x, y) {
 
 // ---------- controls ----------
 
-function key(label, num, active, onTap) {
+function key(label, active, onTap) {
   const b = document.createElement('button');
   b.className = `key${active ? ' active' : ''}`;
-  const n = document.createElement('span');
-  n.className = 'num';
-  n.textContent = num;
   const l = document.createElement('span');
   l.className = 'lbl';
   l.textContent = label;
-  b.append(n, l);
+  b.append(l);
   b.addEventListener('click', () => onTap(b));
   return b;
 }
@@ -209,8 +218,8 @@ function param(label, get, set, step, lo, hi) {
 function buildControls() {
   const soundRow = document.getElementById('sound-keys');
   const soundButtons = new Map();
-  VOICES.forEach((v, i) => {
-    const b = key(v, String(i + 1).padStart(2, '0'), v === app.sound, () => {
+  VOICES.forEach((v) => {
+    const b = key(v, v === app.sound, () => {
       app.sound = v;
       for (const [name, btn] of soundButtons) btn.classList.toggle('active', name === v);
       if (app.audio) play(660); // audition the voice
@@ -221,8 +230,8 @@ function buildControls() {
 
   const scaleRow = document.getElementById('scale-keys');
   const scaleButtons = new Map();
-  SCALE_NAMES.forEach((s, i) => {
-    const b = key(s, String(i + 1).padStart(2, '0'), s === app.scale, () => {
+  SCALE_NAMES.forEach((s) => {
+    const b = key(s, s === app.scale, () => {
       app.scale = s;
       app.bounce.scale = s;
       for (const [name, btn] of scaleButtons) btn.classList.toggle('active', name === s);
@@ -257,7 +266,6 @@ function switchMode(mode) {
   document.querySelectorAll('.key-mode').forEach((d) => {
     d.classList.toggle('active', d.dataset.mode === mode);
   });
-  document.getElementById('caption-mode').textContent = mode;
   document.getElementById('panel-bounce').hidden = mode !== 'bounce';
   document.getElementById('panel-grid').hidden = mode !== 'grid';
 }
@@ -275,7 +283,7 @@ function frame(t) {
   c2d.fillStyle = BG;
   c2d.fillRect(0, 0, w, h);
 
-  if (linkSync && linkSync.isOn && linkSync.state) {
+  if (linkSync && linkSync.isOn && !linkSync.stale && linkSync.state) {
     const beatInt = Math.floor(linkSync.currentBeat());
     if (beatInt !== window.__lastBeatInt) {
       window.__lastBeatInt = beatInt;

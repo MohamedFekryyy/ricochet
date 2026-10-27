@@ -13,6 +13,7 @@
   <div id="brand">
     <span class="name">ricochet</span>
     <span class="sub">pocket instrument &middot; mk i</span>
+    <span id="link-status" role="status" aria-live="polite" hidden></span>
   </div>
   <div class="hud-buttons">
     <button id="btn-link" class="key key-sm key-link" aria-label="Ableton Link sync" title="Ableton Link sync" hidden><span class="led"></span>link</button>
@@ -23,10 +24,6 @@
 
 <main id="screen" hidden>
   <canvas id="stage"></canvas>
-  <div id="screen-caption">
-    <span id="caption-mode">bounce</span>
-    <span class="caption-right">audio out &rarr; mixer</span>
-  </div>
 </main>
 
 <section id="controls" hidden>

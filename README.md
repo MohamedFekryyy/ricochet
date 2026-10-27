@@ -47,12 +47,12 @@ in the top bar. Audio suspends when the tab is hidden.
 
 A companion bridge (`link/bridge.py`) joins an Ableton Link session on
 your wifi and relays tempo/beat/phase to the app; notes are quantized
-onto the shared 16th-note grid. Experimental: tested same-host only, not
-yet with Live or on a real phone — see "Known limitations" in
-`link/README.md`. Run it on the Mac that runs Live, open
-the printed LAN URL on your phone, and tap the **link** key. Browsers
-can't join Link directly (no UDP in the web platform), which is why the
-bridge exists — see `link/README.md`.
+onto the shared 16th-note grid. Run it on the Mac that runs Live, open
+the printed access URL (it carries a per-run key) on your phone, and tap
+the **link** key. Browsers can't join Link directly (no UDP in the web
+platform), which is why the bridge exists. Experimental: verified
+same-host and under simulated network delay, not yet with Live or on a
+real phone — see "Known limitations" in `link/README.md`.
 
 ## Develop
 
@@ -62,6 +62,8 @@ node scripts/build.mjs # bundle to a single HTML file
 node scripts/smoke.mjs # headless-Chrome functional test incl. real audio rendering
 LINK_PYTHONPATH=<path to aalink+websockets> node scripts/link-smoke.mjs
                        # end-to-end Link test against a real bridge
+LINK_PYTHONPATH=<path to aalink+websockets> node scripts/link-net-smoke.mjs
+                       # Link sync under simulated network delay + stall
 node scripts/shots.mjs # phone-sized screenshots into docs/screenshots/
 ```
 
