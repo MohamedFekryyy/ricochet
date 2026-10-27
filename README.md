@@ -16,7 +16,11 @@ samples, no dependencies, and no build step needed to run it.
 ## Play it
 
 Open `index.html` in any modern browser (or serve the folder statically).
-Tap to start — browsers only allow audio after a gesture.
+Tap **power** to start — browsers only allow audio after a gesture.
+
+The interface is styled as a little hardware instrument: a recessed
+display on a field-grey body, raised keys, and LCD parameter readouts
+(see `docs/research.md` for the design grounding).
 
 For the single-file build (everything inlined into one HTML file you can
 send to a phone and open locally):

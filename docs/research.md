@@ -37,6 +37,40 @@ were taken from the creator.
   into `dist/ricochet.html`, matching how the original was shared (one
   self-contained HTML file). The dev version stays modular for tests.
 
+## Industrial design (v2)
+
+The first version looked like a generic dark web demo. The redesign
+restyles the app as a self-contained hardware instrument, in the spirit
+of Teenage Engineering's pocket devices (EP-133 K.O. II, EP-136) without
+copying any product's identity, logo, or layout:
+
+- **Light field-grey body, dark display.** The phone becomes the device:
+  a light grey shell with a recessed warm-black screen (the canvas)
+  framed by a bezel, instead of a full-bleed dark web page.
+- **Printed lowercase labels.** TE panels use lowercase technical
+  microcopy ("like most daws...", per teenage.engineering product copy);
+  all labels here are lowercase monospace with hairline section rules.
+- **Physical keys.** Controls are raised keys (gradient face, hard bottom
+  edge, pressed-state travel) instead of flat pills. Active functions
+  light a small signal-orange LED on the key.
+- **LCD readouts.** Parameter values sit in glowing amber-on-black chips
+  flanked by −/+ keys, like the segment displays on the EP series.
+- **Numbered function keys.** Voices and scales are numbered 01-05 /
+  01-03, the way TE pads double as a number pad (per the official EP-133
+  buttons guide).
+- **Amber LED matrix on screen.** The bounce polygon, balls, and grid
+  dots render in amber/signal-orange on warm black, matching the
+  dot-matrix aesthetic of the original reel.
+
+Sources: teenage.engineering EP-133 product page and guide
+(https://teenage.engineering/products/ep-133,
+https://teenage.engineering/guides/ep-133/buttons-and-combos).
+
+Interaction notes: the canvas is measured from its own box inside the
+bezel (not the window), and re-measured when the screen frame is revealed
+after the power overlay - a full-window canvas with inline pixel sizing
+silently broke both under the new layout.
+
 ## Hardware grounding
 
 Intended rig: a phone playing into an external mixer, e.g. a Teenage Engineering EP-136 K.O.–sidekick.

@@ -3,80 +3,173 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<meta name="theme-color" content="#050505">
-<title>Ricochet</title>
+<meta name="theme-color" content="#d6d4ce">
+<title>ricochet</title>
 <style>
+/* ricochet — industrial pocket-instrument shell.
+   Light field-grey body, printed lowercase labels, raised keys,
+   a dark led-matrix display. own identity, workshop-grade. */
+
+:root {
+  --body: #d6d4ce;          /* field grey */
+  --body-dark: #b9b7b0;
+  --ink: #1c1c1a;
+  --ink-soft: rgba(28, 28, 26, 0.55);
+  --key-top: #efede6;
+  --key-bot: #dcdad2;
+  --key-edge: #a3a19a;
+  --accent: #ff4d00;        /* signal orange */
+  --amber: #ffb000;         /* led amber */
+  --screen: #0b0a08;        /* warm black glass */
+  --lcd: #14120e;
+}
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 [hidden] { display: none !important; }
+
 html, body {
   margin: 0; height: 100%; overflow: hidden;
-  background: #050505; color: #f2f2f2;
+  background: var(--body);
+  color: var(--ink);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   user-select: none; -webkit-user-select: none;
 }
-#stage { position: fixed; inset: 0; touch-action: none; }
+
+body {
+  display: flex; flex-direction: column;
+  padding: calc(env(safe-area-inset-top, 0px) + 10px) 12px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  gap: 10px;
+}
+
+/* ---------- physical keys ---------- */
+
+.key {
+  font: inherit; color: var(--ink); cursor: pointer;
+  border: 1px solid var(--key-edge); border-radius: 6px;
+  background: linear-gradient(var(--key-top), var(--key-bot));
+  box-shadow: 0 2px 0 var(--key-edge), inset 0 1px 0 rgba(255, 255, 255, 0.65);
+  text-transform: lowercase; letter-spacing: 0.08em;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.key:active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 var(--key-edge), inset 0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.led {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: rgba(28, 28, 26, 0.18);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.25);
+  flex: none;
+}
+.key.active .led, .key-start .led {
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(255, 77, 0, 0.8);
+}
+
+/* ---------- top bar ---------- */
 
 #hud {
-  position: fixed; top: 0; left: 0; right: 0;
   display: flex; justify-content: space-between; align-items: center;
-  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 0;
+  padding: 0 2px;
+}
+#brand { display: flex; flex-direction: column; line-height: 1.15; }
+#brand .name { font-size: 15px; letter-spacing: 0.32em; font-weight: 700; }
+#brand .sub { font-size: 8px; letter-spacing: 0.18em; color: var(--ink-soft); }
+.hud-buttons { display: flex; gap: 8px; }
+.key-sm { width: 40px; height: 34px; font-size: 13px; }
+.key-sm.off { color: var(--ink-soft); }
+.key-sm.off .led { background: rgba(28, 28, 26, 0.18); box-shadow: none; }
+
+/* ---------- display ---------- */
+
+#screen {
+  position: relative; flex: 1 1 auto; min-height: 0;
+  border-radius: 10px;
+  border: 1px solid #8f8d86;
+  background: var(--screen);
+  box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 255, 255, 0.5);
+  overflow: hidden;
+}
+#stage { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+#screen-caption {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; justify-content: space-between;
+  padding: 4px 10px 5px;
+  font-size: 8px; letter-spacing: 0.22em; text-transform: lowercase;
+  color: rgba(255, 176, 0, 0.5);
   pointer-events: none;
 }
-#brand { font-size: 12px; letter-spacing: 0.4em; opacity: 0.65; }
-.hud-buttons { display: flex; gap: 10px; pointer-events: auto; }
-.hud-buttons button {
-  width: 42px; height: 42px; border-radius: 50%;
-  border: 1px solid #333; background: rgba(18, 18, 18, 0.65);
-  color: #f2f2f2; font: inherit; font-size: 15px; cursor: pointer;
-}
-.hud-buttons button.off { opacity: 0.45; }
+
+/* ---------- control panel ---------- */
 
 #controls {
-  position: fixed; left: 0; right: 0; bottom: 0;
-  padding: 10px 14px calc(env(safe-area-inset-bottom, 0px) + 12px);
-  background: linear-gradient(transparent, rgba(5, 5, 5, 0.94) 32%);
-  touch-action: none;
+  display: flex; flex-direction: column; gap: 9px;
+  touch-action: manipulation;
 }
-#mode-dots { display: flex; gap: 10px; justify-content: center; padding: 2px 0 10px; }
-#mode-dots .dot {
-  width: 8px; height: 8px; border-radius: 50%; border: 1px solid #555;
-  background: transparent; padding: 0; cursor: pointer;
-}
-#mode-dots .dot.active { background: #f2f2f2; border-color: #f2f2f2; }
-
-.row { display: flex; gap: 8px; justify-content: center; margin-top: 8px; flex-wrap: wrap; }
-.pill {
-  padding: 8px 12px; border: 1px solid #333; border-radius: 999px;
-  background: transparent; color: #cfcfcf; font: inherit; font-size: 10px;
-  letter-spacing: 0.14em; text-transform: uppercase; cursor: pointer;
-}
-.pill.active { border-color: #ff3b30; color: #fff; background: rgba(255, 59, 48, 0.14); }
-
-.steppers { display: flex; gap: 8px; justify-content: center; margin-top: 10px; flex-wrap: wrap; }
-.stepper {
+.section-label {
+  font-size: 8px; letter-spacing: 0.26em; color: var(--ink-soft);
+  margin: 0 2px 5px;
   display: flex; align-items: center; gap: 8px;
-  border: 1px solid #2a2a2a; border-radius: 12px; padding: 6px 10px;
 }
-.stepper .label { font-size: 9px; letter-spacing: 0.18em; opacity: 0.55; text-transform: uppercase; }
-.stepper .value { min-width: 2.2ch; text-align: center; font-size: 15px; letter-spacing: 0.1em; }
-.stepper button {
-  width: 26px; height: 26px; border-radius: 8px; border: 1px solid #333;
-  background: #111; color: #f2f2f2; font: inherit; font-size: 14px; cursor: pointer;
+.section-label::after {
+  content: ""; flex: 1; height: 1px; background: rgba(28, 28, 26, 0.18);
 }
+
+#mode-keys { display: flex; gap: 8px; }
+.key-mode { flex: 1; height: 38px; font-size: 12px; }
+.key-mode.active { border-color: var(--accent); }
+
+.key-row { display: flex; gap: 6px; }
+.key-row .key {
+  flex: 1; min-width: 0; height: 44px;
+  flex-direction: column; gap: 2px; padding: 0 2px;
+}
+.key-row .key .num { font-size: 8px; color: var(--ink-soft); letter-spacing: 0.1em; }
+.key-row .key .lbl { font-size: 9px; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; }
+.key-row .key.active { border-color: var(--accent); }
+.key-row .key.active .num { color: var(--accent); }
+
+/* parameter blocks: printed label, lcd readout, - / + keys */
+.params { display: flex; gap: 8px; }
+.param { flex: 1; min-width: 0; }
+.param .param-label {
+  font-size: 8px; letter-spacing: 0.2em; color: var(--ink-soft);
+  text-align: center; margin-bottom: 4px; white-space: nowrap; overflow: hidden;
+}
+.param .param-face { display: flex; gap: 5px; align-items: stretch; }
+.param .key { width: 34px; height: 34px; font-size: 15px; flex: none; }
+.param .lcd {
+  flex: 1; min-width: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--lcd); color: var(--amber);
+  border: 1px solid #8f8d86; border-radius: 5px;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.8);
+  font-size: 15px; letter-spacing: 0.1em;
+  text-shadow: 0 0 6px rgba(255, 176, 0, 0.55);
+}
+
+/* ---------- power overlay ---------- */
 
 #overlay {
   position: fixed; inset: 0; z-index: 10;
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  background: #050505; text-align: center; padding: 24px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--body); padding: 24px; text-align: center;
 }
-#overlay h1 { font-size: 22px; letter-spacing: 0.5em; margin: 0 0 8px; text-indent: 0.5em; }
-#overlay .tagline { font-size: 11px; opacity: 0.55; letter-spacing: 0.1em; margin: 0 0 36px; }
-#btn-start {
-  padding: 16px 34px; border-radius: 999px; border: 1px solid #ff3b30;
-  background: rgba(255, 59, 48, 0.12); color: #fff; font: inherit;
-  font-size: 13px; letter-spacing: 0.2em; text-transform: uppercase; cursor: pointer;
+.plate { display: flex; flex-direction: column; align-items: center; }
+#overlay h1 { font-size: 24px; letter-spacing: 0.42em; margin: 0 0 4px; text-indent: 0.42em; }
+#overlay .tagline { font-size: 9px; letter-spacing: 0.22em; color: var(--ink-soft); margin: 0 0 26px; }
+#overlay .spec {
+  font-size: 8px; letter-spacing: 0.16em; color: var(--ink-soft);
+  border-top: 1px solid rgba(28, 28, 26, 0.25);
+  border-bottom: 1px solid rgba(28, 28, 26, 0.25);
+  padding: 7px 4px; margin-bottom: 30px;
 }
-#overlay .note { margin-top: 30px; font-size: 10px; opacity: 0.4; letter-spacing: 0.08em; }
+.key-start {
+  height: 46px; padding: 0 34px; font-size: 13px; letter-spacing: 0.24em;
+  border-color: var(--accent);
+}
+#overlay .note { margin-top: 30px; font-size: 9px; line-height: 1.7; letter-spacing: 0.12em; color: var(--ink-soft); }
 
 #smoke {
   position: fixed; left: 0; bottom: 0; z-index: 99; margin: 0;
@@ -87,31 +180,54 @@ html, body {
 </style>
 </head>
 <body>
-<canvas id="stage"></canvas>
 
 <header id="hud" hidden>
-  <div id="brand">RICOCHET</div>
+  <div id="brand">
+    <span class="name">ricochet</span>
+    <span class="sub">pocket instrument &middot; mk i</span>
+  </div>
   <div class="hud-buttons">
-    <button id="btn-pause" aria-label="Pause" title="Pause">&#10074;&#10074;</button>
-    <button id="btn-mute" aria-label="Mute" title="Mute">&#9834;</button>
+    <button id="btn-pause" class="key key-sm" aria-label="Pause" title="Pause">&#10074;&#10074;</button>
+    <button id="btn-mute" class="key key-sm" aria-label="Mute" title="Mute">&#9834;</button>
   </div>
 </header>
 
-<section id="controls" hidden>
-  <div id="mode-dots">
-    <button class="dot active" data-mode="bounce" aria-label="Bounce mode"></button>
-    <button class="dot" data-mode="grid" aria-label="Grid mode"></button>
+<main id="screen" hidden>
+  <canvas id="stage"></canvas>
+  <div id="screen-caption">
+    <span id="caption-mode">bounce</span>
+    <span class="caption-right">audio out &rarr; mixer</span>
   </div>
-  <div id="shared-rows"></div>
+</main>
+
+<section id="controls" hidden>
+  <div class="section">
+    <div class="section-label">mode</div>
+    <div id="mode-keys">
+      <button class="key key-mode active" data-mode="bounce"><span class="led"></span>bounce</button>
+      <button class="key key-mode" data-mode="grid"><span class="led"></span>grid</button>
+    </div>
+  </div>
   <div id="panel-bounce" class="panel"></div>
   <div id="panel-grid" class="panel" hidden></div>
+  <div class="section">
+    <div class="section-label">sound</div>
+    <div id="sound-keys" class="key-row"></div>
+  </div>
+  <div class="section">
+    <div class="section-label">scale</div>
+    <div id="scale-keys" class="key-row"></div>
+  </div>
 </section>
 
 <div id="overlay">
-  <h1>RICOCHET</h1>
-  <p class="tagline">a tiny instrument for happy accidents</p>
-  <button id="btn-start">tap to play</button>
-  <p class="note">sound starts after your tap &middot; plug into your mixer</p>
+  <div class="plate">
+    <h1>ricochet</h1>
+    <p class="tagline">pocket instrument &middot; mk i</p>
+    <div class="spec">2 engines &middot; 5 voices &middot; 3 scales &middot; web audio</div>
+    <button id="btn-start" class="key key-start"><span class="led"></span>power</button>
+    <p class="note">sound starts after your tap<br>plug audio out into your mixer</p>
+  </div>
 </div>
 
 <script>
@@ -305,8 +421,8 @@ function createBounceState({
 
 function rebuildPolygon(state) {
   const cx = state.width / 2;
-  const cy = state.height * 0.42;
-  const radius = Math.min(state.width, state.height) * 0.36;
+  const cy = state.height * 0.47;
+  const radius = Math.min(state.width, state.height) * 0.4;
   state.polygon = makePolygon(state.sides, cx, cy, radius);
   for (const b of state.balls) projectInside(b, state.polygon);
   return state;
@@ -576,8 +692,8 @@ const SHOT = params.get('shot'); // 'bounce' | 'grid' for deterministic screensh
 
 const GRID_COLS = 10;
 const GRID_ROWS = 10;
-const BALL_COLORS = ['#ff3b30', '#f2f2f2', '#8e8e93'];
-const BG = '#050505';
+const BALL_COLORS = ['#ffb000', '#fff1d6', '#ff4d00'];
+const BG = '#0b0a08';
 
 const canvas = document.getElementById('stage');
 const c2d = canvas.getContext('2d');
@@ -611,7 +727,7 @@ const app = {
 // ---------- layout ----------
 
 function viewSize() {
-  return { w: window.innerWidth, h: window.innerHeight };
+  return { w: canvas.clientWidth || window.innerWidth, h: canvas.clientHeight || window.innerHeight };
 }
 
 function resize() {
@@ -619,8 +735,6 @@ function resize() {
   const dpr = Math.min(3, window.devicePixelRatio || 1);
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
-  canvas.style.width = `${w}px`;
-  canvas.style.height = `${h}px`;
   c2d.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (!app.bounce) {
     app.bounce = createBounceState({
@@ -637,8 +751,8 @@ function resize() {
 
 function gridRect() {
   const { w, h } = viewSize();
-  const side = Math.min(w, h * 0.62) * 0.86;
-  return { x: (w - side) / 2, y: h * 0.1, size: side };
+  const side = Math.min(w, h * 0.72) * 0.88;
+  return { x: (w - side) / 2, y: (h - side) * 0.45, size: side };
 }
 
 // ---------- sound ----------
@@ -672,94 +786,101 @@ function gridTriggerAt(x, y) {
 
 // ---------- controls ----------
 
-function pill(label, active, onTap) {
+function key(label, num, active, onTap) {
   const b = document.createElement('button');
-  b.className = `pill${active ? ' active' : ''}`;
-  b.textContent = label;
+  b.className = `key${active ? ' active' : ''}`;
+  const n = document.createElement('span');
+  n.className = 'num';
+  n.textContent = num;
+  const l = document.createElement('span');
+  l.className = 'lbl';
+  l.textContent = label;
+  b.append(n, l);
   b.addEventListener('click', () => onTap(b));
   return b;
 }
 
-function stepper(label, get, set, step, lo, hi) {
+function param(label, get, set, step, lo, hi) {
   const wrap = document.createElement('div');
-  wrap.className = 'stepper';
-  const name = document.createElement('span');
-  name.className = 'label';
+  wrap.className = 'param';
+  const name = document.createElement('div');
+  name.className = 'param-label';
   name.textContent = label;
+  const face = document.createElement('div');
+  face.className = 'param-face';
   const minus = document.createElement('button');
+  minus.className = 'key';
   minus.textContent = '−';
   const value = document.createElement('span');
-  value.className = 'value';
-  value.textContent = get();
+  value.className = 'lcd';
+  value.textContent = String(get()).padStart(2, '0');
   const plus = document.createElement('button');
+  plus.className = 'key';
   plus.textContent = '+';
   const update = (d) => {
     const v = Math.min(hi, Math.max(lo, get() + d));
     set(v);
-    value.textContent = get();
+    value.textContent = String(get()).padStart(2, '0');
   };
   minus.addEventListener('click', () => update(-step));
   plus.addEventListener('click', () => update(step));
-  wrap.append(name, minus, value, plus);
+  face.append(minus, value, plus);
+  wrap.append(name, face);
   return wrap;
 }
 
 function buildControls() {
-  const shared = document.getElementById('shared-rows');
-
-  const soundRow = document.createElement('div');
-  soundRow.className = 'row';
+  const soundRow = document.getElementById('sound-keys');
   const soundButtons = new Map();
-  for (const v of VOICES) {
-    const b = pill(v, v === app.sound, () => {
+  VOICES.forEach((v, i) => {
+    const b = key(v, String(i + 1).padStart(2, '0'), v === app.sound, () => {
       app.sound = v;
       for (const [name, btn] of soundButtons) btn.classList.toggle('active', name === v);
       if (app.audio) play(660); // audition the voice
     });
     soundButtons.set(v, b);
     soundRow.append(b);
-  }
+  });
 
-  const scaleRow = document.createElement('div');
-  scaleRow.className = 'row';
+  const scaleRow = document.getElementById('scale-keys');
   const scaleButtons = new Map();
-  for (const s of SCALE_NAMES) {
-    const b = pill(s, s === app.scale, () => {
+  SCALE_NAMES.forEach((s, i) => {
+    const b = key(s, String(i + 1).padStart(2, '0'), s === app.scale, () => {
       app.scale = s;
       app.bounce.scale = s;
       for (const [name, btn] of scaleButtons) btn.classList.toggle('active', name === s);
     });
     scaleButtons.set(s, b);
     scaleRow.append(b);
-  }
-  shared.append(soundRow, scaleRow);
+  });
 
   const bouncePanel = document.getElementById('panel-bounce');
-  const bounceSteppers = document.createElement('div');
-  bounceSteppers.className = 'steppers';
-  bounceSteppers.append(
-    stepper('corners', () => app.corners, (v) => { app.corners = v; setCorners(app.bounce, v); }, 1, ...LIMITS.corners),
-    stepper('speed', () => app.speed, (v) => { app.speed = v; setSpeed(app.bounce, v); }, 1, ...LIMITS.speed),
-    stepper('amount', () => app.amount, (v) => { app.amount = v; setAmount(app.bounce, v); }, 1, ...LIMITS.amount),
+  const bounceParams = document.createElement('div');
+  bounceParams.className = 'params';
+  bounceParams.append(
+    param('corners', () => app.corners, (v) => { app.corners = v; setCorners(app.bounce, v); }, 1, ...LIMITS.corners),
+    param('speed', () => app.speed, (v) => { app.speed = v; setSpeed(app.bounce, v); }, 1, ...LIMITS.speed),
+    param('amount', () => app.amount, (v) => { app.amount = v; setAmount(app.bounce, v); }, 1, ...LIMITS.amount),
   );
-  bouncePanel.append(bounceSteppers);
+  bouncePanel.append(bounceParams);
 
   const gridPanel = document.getElementById('panel-grid');
-  const gridSteppers = document.createElement('div');
-  gridSteppers.className = 'steppers';
-  gridSteppers.append(
-    stepper('sensitivity', () => app.grid.sensitivity,
+  const gridParams = document.createElement('div');
+  gridParams.className = 'params';
+  gridParams.append(
+    param('sensitivity', () => app.grid.sensitivity,
       (v) => { app.grid.sensitivity = v; app.grid.tracker.setSensitivity(v); }, 5, 0, 100),
-    stepper('size', () => app.grid.size, (v) => { app.grid.size = v; }, 1, 1, 3),
+    param('brush', () => app.grid.size, (v) => { app.grid.size = v; }, 1, 1, 3),
   );
-  gridPanel.append(gridSteppers);
+  gridPanel.append(gridParams);
 }
 
 function switchMode(mode) {
   app.mode = mode;
-  document.querySelectorAll('#mode-dots .dot').forEach((d) => {
+  document.querySelectorAll('.key-mode').forEach((d) => {
     d.classList.toggle('active', d.dataset.mode === mode);
   });
+  document.getElementById('caption-mode').textContent = mode;
   document.getElementById('panel-bounce').hidden = mode !== 'bounce';
   document.getElementById('panel-grid').hidden = mode !== 'grid';
 }
@@ -802,8 +923,8 @@ function drawBounce(dt) {
     const b = vertices[(i + 1) % vertices.length];
     const f = app.flashes.get(i) || 0;
     c2d.strokeStyle = f > 0.02
-      ? `rgba(255, 59, 48, ${0.25 + 0.75 * f})`
-      : 'rgba(242, 242, 242, 0.8)';
+      ? `rgba(255, 77, 0, ${0.25 + 0.75 * f})`
+      : 'rgba(255, 241, 214, 0.75)';
     c2d.lineWidth = f > 0.02 ? 2.5 : 1.5;
     c2d.beginPath();
     c2d.moveTo(a.x, a.y);
@@ -837,13 +958,13 @@ function drawGrid(now) {
         const k = 1 - age;
         c2d.beginPath();
         c2d.arc(cx, cy, cell * 0.16 + cell * 0.22 * k, 0, Math.PI * 2);
-        c2d.fillStyle = `rgba(255, 59, 48, ${0.25 + 0.75 * k})`;
+        c2d.fillStyle = `rgba(255, 77, 0, ${0.25 + 0.75 * k})`;
         c2d.fill();
       } else {
         if (t) app.grid.active.delete(key);
         c2d.beginPath();
         c2d.arc(cx, cy, 2.2, 0, Math.PI * 2);
-        c2d.fillStyle = 'rgba(242, 242, 242, 0.5)';
+        c2d.fillStyle = 'rgba(255, 176, 0, 0.28)';
         c2d.fill();
       }
     }
@@ -904,7 +1025,7 @@ document.getElementById('btn-mute').addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('off', app.audio.isMuted());
 });
 
-document.querySelectorAll('#mode-dots .dot').forEach((d) => {
+document.querySelectorAll('.key-mode').forEach((d) => {
   d.addEventListener('click', () => switchMode(d.dataset.mode));
 });
 
@@ -919,7 +1040,11 @@ document.addEventListener('visibilitychange', () => {
 function showUI() {
   overlay.hidden = true;
   hud.hidden = false;
+  document.getElementById('screen').hidden = false;
   controls.hidden = false;
+  // the canvas was laid out while its screen frame was still hidden
+  // (client size 0), so re-measure now that it's visible.
+  requestAnimationFrame(resize);
 }
 
 function start(withAudio) {

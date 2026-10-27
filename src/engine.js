@@ -47,8 +47,8 @@ export function createBounceState({
 
 export function rebuildPolygon(state) {
   const cx = state.width / 2;
-  const cy = state.height * 0.42;
-  const radius = Math.min(state.width, state.height) * 0.36;
+  const cy = state.height * 0.47;
+  const radius = Math.min(state.width, state.height) * 0.4;
   state.polygon = makePolygon(state.sides, cx, cy, radius);
   for (const b of state.balls) projectInside(b, state.polygon);
   return state;
