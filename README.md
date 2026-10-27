@@ -46,7 +46,7 @@ in the top bar. Audio suspends when the tab is hidden.
 ## Develop
 
 ```
-node --test test/      # 32 unit tests (physics, notes, engine, grid, audio buffer)
+npm test                # 32 unit tests (physics, notes, engine, grid, audio buffer)
 node scripts/build.mjs # bundle to a single HTML file
 node scripts/smoke.mjs # headless-Chrome functional test incl. real audio rendering
 node scripts/shots.mjs # phone-sized screenshots into docs/screenshots/
