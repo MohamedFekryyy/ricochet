@@ -110,10 +110,13 @@ wifi.
 
 - **A browser cannot join a Link session.** Link discovers peers over
   UDP multicast; the web platform exposes no UDP. Every browser-Link
-  project in the wild uses a local bridge (e.g.
+  project we found uses a local bridge (e.g.
   github.com/vigliensoni/browser-sync-ableton-link,
-  github.com/artfwo/aalink-js). There is no pure-JS implementation of
-  the Link protocol; all of them wrap Ableton's official C++ SDK.
+  github.com/artfwo/aalink-js). Of the five implementations we checked,
+  every one wraps Ableton's official C++ SDK; we found none implemented
+  in browser-runnable JavaScript. Ableton documents two integration
+  routes (iOS LinkKit, cross-platform C++), neither of which runs in a
+  web page.
 - **The bridge is Python + aalink** (pypi.org/project/aalink): prebuilt
   macOS wheels, no compiler, asyncio-native. Node alternatives
   (node-abletonlink, @ktamas77/abletonlink, aalink-js) all compile C++
@@ -126,9 +129,12 @@ wifi.
   (scheduleVoice already supports future times). Physics stays
   free-running; Link owns when notes land. Tempo follows the session;
   the bridge relays state at 25 Hz and the client extrapolates between
-  updates (LAN jitter is the residual error, a few ms).
+  updates.
 - Verified end-to-end in `scripts/link-smoke.mjs`: real aalink session,
   live tempo-change propagation, every scheduled note checked against
-  the 16th grid, beat indicator, disconnect behavior. Interop with
-  Ableton Live itself was not tested in the sandbox (no Live instance
-  available); the first session with Live is the real test.
+  the 16th grid, beat indicator, disconnect behavior. **Scope: bridge
+  and browser ran on the same host**, so this validates the logic, not
+  network timing. Cross-device latency/jitter over wifi is unmeasured;
+  interop with Ableton Live and behavior on a physical iPhone are
+  untested. Known limitations and the corrections required before this
+  is ready are listed in `link/README.md`.
