@@ -120,6 +120,43 @@ body {
 }
 
 #mode-keys { display: flex; gap: 8px; }
+
+/* master fader: recessed slot, raised cap, amber lcd readout */
+.fader { display: flex; align-items: center; gap: 8px; height: 40px; }
+.fader input[type=range] {
+  flex: 1; min-width: 0; margin: 0; height: 40px;
+  -webkit-appearance: none; appearance: none; background: transparent;
+  touch-action: none;
+}
+.fader input[type=range]::-webkit-slider-runnable-track {
+  height: 8px; border-radius: 4px; background: var(--lcd);
+  border: 1px solid #3a3835; box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+.fader input[type=range]::-moz-range-track {
+  height: 8px; border-radius: 4px; background: var(--lcd);
+  border: 1px solid #3a3835; box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+.fader input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 22px; height: 30px; margin-top: -12px;
+  border-radius: 5px; border: 1px solid var(--key-edge);
+  background: linear-gradient(var(--key-top), var(--key-bot));
+  box-shadow: 0 2px 0 var(--key-edge), inset 0 1px 0 rgba(255, 255, 255, 0.08),
+              inset 0 -6px 0 -5px var(--accent);
+}
+.fader input[type=range]::-moz-range-thumb {
+  width: 22px; height: 30px; border-radius: 5px; border: 1px solid var(--key-edge);
+  background: linear-gradient(var(--key-top), var(--key-bot));
+  box-shadow: 0 2px 0 var(--key-edge), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.fader .lcd {
+  width: 52px; height: 34px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--lcd); color: var(--amber);
+  border: 1px solid #3a3835; border-radius: 5px;
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.8);
+  font-size: 15px; letter-spacing: 0.1em;
+  text-shadow: 0 0 6px rgba(255, 176, 0, 0.55);
+}
 .key-mode { flex: 1; height: 38px; font-size: 12px; }
 .key-mode.active { border-color: var(--accent); }
 
@@ -243,6 +280,13 @@ body {
   <div id="section-sync" class="section" hidden>
     <div class="section-label">sync grid</div>
     <div id="sync-keys" class="key-row"></div>
+  </div>
+  <div class="section">
+    <div class="section-label">master</div>
+    <div class="fader">
+      <input id="master-vol" type="range" min="0" max="100" step="1" value="60" aria-label="Master volume">
+      <span id="master-lcd" class="lcd">60</span>
+    </div>
   </div>
 </section>
 
@@ -1361,6 +1405,15 @@ document.getElementById('btn-pause').addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('off', app.paused);
 });
 
+// Master fader, 0..100 -> gain 0..1. Read before audio exists so the
+// level set on the controls carries into createAudio.
+const masterVol = document.getElementById('master-vol');
+const masterLcd = document.getElementById('master-lcd');
+masterVol.addEventListener('input', () => {
+  masterLcd.textContent = String(masterVol.value).padStart(2, '0');
+  if (app.audio) app.audio.setVolume(masterVol.value / 100);
+});
+
 document.getElementById('btn-mute').addEventListener('click', (e) => {
   if (!app.audio) return;
   app.audio.setMuted(!app.audio.isMuted());
@@ -1391,7 +1444,7 @@ function showUI() {
 
 function start(withAudio) {
   if (withAudio && !app.audio) {
-    app.audio = createAudio({ volume: 0.6 });
+    app.audio = createAudio({ volume: masterVol.value / 100 });
     app.audio.resume();
   }
   showUI();

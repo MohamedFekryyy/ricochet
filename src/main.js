@@ -453,6 +453,15 @@ document.getElementById('btn-pause').addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('off', app.paused);
 });
 
+// Master fader, 0..100 -> gain 0..1. Read before audio exists so the
+// level set on the controls carries into createAudio.
+const masterVol = document.getElementById('master-vol');
+const masterLcd = document.getElementById('master-lcd');
+masterVol.addEventListener('input', () => {
+  masterLcd.textContent = String(masterVol.value).padStart(2, '0');
+  if (app.audio) app.audio.setVolume(masterVol.value / 100);
+});
+
 document.getElementById('btn-mute').addEventListener('click', (e) => {
   if (!app.audio) return;
   app.audio.setMuted(!app.audio.isMuted());
@@ -483,7 +492,7 @@ function showUI() {
 
 function start(withAudio) {
   if (withAudio && !app.audio) {
-    app.audio = createAudio({ volume: 0.6 });
+    app.audio = createAudio({ volume: masterVol.value / 100 });
     app.audio.resume();
   }
   showUI();
