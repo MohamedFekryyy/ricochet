@@ -165,10 +165,10 @@ export class LinkSync {
 
   // AudioContext time of the next 16th-note boundary, or null when the
   // timeline is stale (callers must fall back to immediate playback).
-  quantizedTime(ctx, perfNow = performance.now()) {
+  quantizedTime(ctx, perfNow = performance.now(), sub = GRID_SUBDIVISION) {
     if (this.stale || !this.state) return null;
     const beat = this.currentBeat(perfNow);
-    const gridBeat = nextGridBeat(beat);
+    const gridBeat = nextGridBeat(beat, sub);
     const dtBeats = gridBeat - beat;
     return {
       when: ctx.currentTime + (dtBeats * 60) / this.state.bpm,

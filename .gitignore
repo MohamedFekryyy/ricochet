@@ -1,2 +1,6 @@
 node_modules/
 .DS_Store
+
+# local link bridge env + log
+link/.venv/
+link/bridge.log

@@ -45,6 +45,7 @@ const app = {
   speed: 23,
   amount: 1,
   flashes: new Map(), // edge index -> intensity 0..1
+  syncGrid: 0.5, // Link quantization in beats (8th notes)
   grid: {
     sensitivity: 90,
     size: 1,
@@ -92,18 +93,37 @@ function gridRect() {
 
 // ---------- sound ----------
 
+// Link grid choices, in beats. Coarse grids are what make the sync
+// audible: random wall hits snapped to 16ths still sound random.
+const SYNC_GRIDS = [['1/16', 0.25], ['1/8', 0.5], ['1/4', 1]];
+const slotNotes = new Map(); // gridBeat -> Set of freqs already queued
+
+// Returns the delay in seconds until the note sounds (0 when immediate,
+// null when dropped as a duplicate in its grid slot).
 function play(freq, velocity = 1) {
-  if (!app.audio) return;
+  if (!app.audio) return null;
   if (linkSync && linkSync.isOn) {
-    const q = linkSync.quantizedTime(app.audio.ctx);
+    const q = linkSync.quantizedTime(app.audio.ctx, performance.now(), app.syncGrid);
     if (q) {
       if (LINKTEST) (window.__QUANT = window.__QUANT || []).push(q);
+      // Several hits landing in one slot would stack into a flam; play
+      // each pitch once per slot.
+      const slot = Math.round(q.gridBeat * 1000);
+      let set = slotNotes.get(slot);
+      if (!set) {
+        set = new Set();
+        slotNotes.set(slot, set);
+        for (const k of slotNotes.keys()) if (k < slot - 8000) slotNotes.delete(k);
+      }
+      if (set.has(freq)) return null;
+      set.add(freq);
       app.audio.playAt(app.sound, freq, q.when, velocity);
-      return;
+      return Math.max(0, q.when - app.audio.ctx.currentTime);
     }
     // stale timeline: fall through to immediate playback
   }
   app.audio.play(app.sound, freq, velocity);
+  return 0;
 }
 
 // ---------- ableton link ----------
@@ -148,7 +168,12 @@ btnLink.addEventListener('click', toggleLink);
 
 // The link key only exists when the app is served by the bridge
 // (the hosted Pages copy cannot reach a LAN websocket from https).
-probeBridge().then((info) => { if (info) btnLink.hidden = false; });
+probeBridge().then((info) => {
+  if (info) {
+    btnLink.hidden = false;
+    document.getElementById('section-sync').hidden = false;
+  }
+});
 
 // ---------- grid input ----------
 
@@ -240,6 +265,17 @@ function buildControls() {
     scaleRow.append(b);
   });
 
+  const syncRow = document.getElementById('sync-keys');
+  const syncButtons = new Map();
+  SYNC_GRIDS.forEach(([label, sub]) => {
+    const b = key(label, sub === app.syncGrid, () => {
+      app.syncGrid = sub;
+      for (const [s, btn] of syncButtons) btn.classList.toggle('active', s === sub);
+    });
+    syncButtons.set(sub, b);
+    syncRow.append(b);
+  });
+
   const bouncePanel = document.getElementById('panel-bounce');
   const bounceParams = document.createElement('div');
   bounceParams.className = 'params';
@@ -295,9 +331,13 @@ function frame(t) {
   if (app.mode === 'bounce') {
     if (!app.paused) {
       for (const ev of bounceStep(app.bounce, dt)) {
-        app.flashes.set(ev.edge, 1);
         app.hitCount += 1;
-        play(ev.freq, 0.9);
+        const delay = play(ev.freq, 0.9);
+        // Flash the wall when the note sounds, not when the ball hits,
+        // so sight and sound agree under Link quantization.
+        if (delay === null) continue;
+        if (delay > 0.005) setTimeout(() => app.flashes.set(ev.edge, 1), delay * 1000);
+        else app.flashes.set(ev.edge, 1);
       }
     }
     drawBounce(dt);
