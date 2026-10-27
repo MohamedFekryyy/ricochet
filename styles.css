@@ -73,6 +73,10 @@ body {
 .key-sm.off { color: var(--ink-soft); }
 .key-sm.off .led { background: rgba(28, 28, 26, 0.18); box-shadow: none; }
 
+.key-link { width: auto; padding: 0 10px; font-size: 10px; }
+.key-link.active { border-color: var(--accent); }
+.key-link.beat .led { background: var(--amber); box-shadow: 0 0 8px rgba(255, 176, 0, 0.9); }
+
 /* ---------- display ---------- */
 
 #screen {
