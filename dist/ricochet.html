@@ -96,13 +96,10 @@ body {
   overflow: hidden;
 }
 #stage { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
-#screen-caption {
-  position: absolute; left: 0; right: 0; bottom: 0;
-  display: flex; justify-content: space-between;
-  padding: 4px 10px 5px;
-  font-size: 8px; letter-spacing: 0.22em; text-transform: lowercase;
-  color: rgba(255, 176, 0, 0.5);
-  pointer-events: none;
+#link-status {
+  font-size: 8px; letter-spacing: 0.18em; text-transform: lowercase;
+  color: var(--accent);
+  white-space: nowrap;
 }
 
 /* ---------- control panel ---------- */
@@ -129,10 +126,8 @@ body {
   flex: 1; min-width: 0; height: 44px;
   flex-direction: column; gap: 2px; padding: 0 2px;
 }
-.key-row .key .num { font-size: 8px; color: var(--ink-soft); letter-spacing: 0.1em; }
 .key-row .key .lbl { font-size: 9px; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; }
 .key-row .key.active { border-color: var(--accent); }
-.key-row .key.active .num { color: var(--accent); }
 
 /* parameter blocks: printed label, lcd readout, - / + keys */
 .params { display: flex; gap: 8px; }
@@ -189,6 +184,7 @@ body {
   <div id="brand">
     <span class="name">ricochet</span>
     <span class="sub">pocket instrument &middot; mk i</span>
+    <span id="link-status" role="status" aria-live="polite" hidden></span>
   </div>
   <div class="hud-buttons">
     <button id="btn-link" class="key key-sm key-link" aria-label="Ableton Link sync" title="Ableton Link sync" hidden><span class="led"></span>link</button>
@@ -199,10 +195,6 @@ body {
 
 <main id="screen" hidden>
   <canvas id="stage"></canvas>
-  <div id="screen-caption">
-    <span id="caption-mode">bounce</span>
-    <span class="caption-right">audio out &rarr; mixer</span>
-  </div>
 </main>
 
 <section id="controls" hidden>
@@ -692,13 +684,16 @@ function createAudio({ volume = 0.6 } = {}) {
 
 // ---- link.js ----
 // Ableton Link sync client.
-// Browsers cannot join a Link session directly (Link needs UDP multicast
-// on the LAN; the web platform has no UDP), so ricochet talks to the
-// companion bridge (link/bridge.py) over WebSocket. The bridge joins the
-// session and relays tempo/beat/phase; this module follows that timeline
-// and quantizes note triggering onto its beat grid.
+// Browsers cannot use Ableton's documented Link integration routes
+// (iOS LinkKit / C++ SDK), so ricochet talks to the companion bridge
+// (link/bridge.py) over WebSocket. The bridge joins the session and
+// relays tempo/beat/phase; this module estimates network delay with
+// ping/pong, follows the corrected timeline, and quantizes note
+// triggering onto its beat grid.
 
 const GRID_SUBDIVISION = 0.25; // 16th notes in 4/4
+const STALE_AFTER_MS = 1500; // ~37 missed broadcasts
+const PING_INTERVAL_MS = 1000;
 
 // Smallest grid multiple at or after `beat` (a hit exactly on the grid
 // plays immediately).
@@ -706,14 +701,55 @@ function nextGridBeat(beat, sub = GRID_SUBDIVISION) {
   return Math.ceil(beat / sub - 1e-9) * sub + 0; // + 0 normalizes -0
 }
 
+// Clock-offset estimator: keeps the offset sample with the smallest
+// round-trip time over a sliding window (NTP-style; min-RTT is the
+// least delayed sample, so its midpoint is the best offset guess).
+// Pure, so unit tests can feed it synthetic networks.
+class OffsetEstimator {
+  constructor(windowSize = 12) {
+    this.windowSize = windowSize;
+    this.samples = []; // { rtt, offset }
+  }
+
+  // sentAt/receivedAt on the client clock (performance.now, ms),
+  // serverTs on the server clock (ms).
+  addSample(sentAt, serverTs, receivedAt) {
+    const rtt = receivedAt - sentAt;
+    const offset = serverTs - (sentAt + receivedAt) / 2;
+    this.samples.push({ rtt, offset });
+    if (this.samples.length > this.windowSize) this.samples.shift();
+    return rtt;
+  }
+
+  // Estimated serverTime - clientTime, or null before any sample.
+  get offset() {
+    if (!this.samples.length) return null;
+    let best = this.samples[0];
+    for (const s of this.samples) if (s.rtt < best.rtt) best = s;
+    return best.offset;
+  }
+
+  get bestRtt() {
+    if (!this.samples.length) return null;
+    return Math.min(...this.samples.map((s) => s.rtt));
+  }
+}
+
 class LinkSync {
-  constructor({ onState, onStatus } = {}) {
+  constructor({ onState, onStatus, pingIntervalMs = PING_INTERVAL_MS, staleAfterMs = STALE_AFTER_MS } = {}) {
     this.onState = onState || (() => {});
     this.onStatus = onStatus || (() => {});
+    this.pingIntervalMs = pingIntervalMs;
+    this.staleAfterMs = staleAfterMs;
     this.ws = null;
-    this.state = null; // last { bpm, beat, phase, quantum, peers, playing }
-    this.recvPerf = 0; // performance.now() when that state arrived
+    this.state = null; // last { bpm, beat, phase, quantum, peers, playing, ts }
+    this.recvPerf = 0;
+    this.lastMsgPerf = 0;
+    this.estimator = new OffsetEstimator();
     this.isOn = false;
+    this.stale = false;
+    this._pingTimer = null;
+    this._watchdog = null;
   }
 
   connect(url) {
@@ -722,22 +758,58 @@ class LinkSync {
     this.ws = ws;
     ws.onopen = () => {
       this.isOn = true;
+      this.stale = false;
       this.onStatus('on');
+      let pings = 0;
+      const ping = () => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ t: 'ping', c: performance.now() }));
+          pings += 1;
+        }
+      };
+      ping(); // first sample immediately
+      this._pingTimer = setInterval(ping, this.pingIntervalMs);
+      this._watchdog = setInterval(() => this._checkStale(), 250);
     };
     ws.onmessage = (ev) => {
       let msg;
       try { msg = JSON.parse(ev.data); } catch { return; }
+      const now = performance.now();
+      this.lastMsgPerf = now;
+      if (msg.t === 'pong' && typeof msg.c === 'number') {
+        this.estimator.addSample(msg.c, msg.ts, now);
+        return;
+      }
       if (msg.t !== 'state') return;
       this.state = msg;
-      this.recvPerf = performance.now();
+      this.recvPerf = now;
+      if (this.stale) {
+        this.stale = false;
+        this.onStatus('on');
+      }
       this.onState(msg);
     };
-    ws.onclose = () => {
-      this.isOn = false;
-      this.state = null;
-      this.onStatus('off');
-    };
+    ws.onclose = () => this._teardown('off');
     ws.onerror = () => ws.close();
+  }
+
+  _teardown(status) {
+    this.isOn = false;
+    this.stale = false;
+    this.state = null;
+    clearInterval(this._pingTimer);
+    clearInterval(this._watchdog);
+    this._pingTimer = null;
+    this._watchdog = null;
+    this.onStatus(status);
+  }
+
+  _checkStale() {
+    if (!this.isOn || this.stale) return;
+    if (this.lastMsgPerf && performance.now() - this.lastMsgPerf > this.staleAfterMs) {
+      this.stale = true;
+      this.onStatus('stale');
+    }
   }
 
   disconnect() {
@@ -747,24 +819,39 @@ class LinkSync {
       this.ws = null;
     }
     this.isOn = false;
+    this.stale = false;
     this.state = null;
+    clearInterval(this._pingTimer);
+    clearInterval(this._watchdog);
   }
 
   get bpm() {
     return this.state ? this.state.bpm : 0;
   }
 
-  // Continuous Link beat position right now, extrapolated from the last
-  // broadcast (40ms cadence; LAN jitter is the error, a few ms).
+  // Estimated server-clock time for a client-clock instant.
+  serverTimeAt(perfNow = performance.now()) {
+    const off = this.estimator.offset;
+    return off === null ? null : perfNow + off;
+  }
+
+  // Continuous Link beat position right now. With an offset estimate,
+  // extrapolate on the server clock (corrects one-way lag); before the
+  // first pong, fall back to receipt-time anchoring (uncorrected).
   currentBeat(perfNow = performance.now()) {
     if (!this.state) return 0;
+    const serverNow = this.serverTimeAt(perfNow);
+    if (serverNow !== null) {
+      return this.state.beat + ((serverNow - this.state.ts) / 1000) * (this.state.bpm / 60);
+    }
     const elapsedBeats = ((perfNow - this.recvPerf) / 1000) * (this.state.bpm / 60);
     return this.state.beat + elapsedBeats;
   }
 
-  // AudioContext time of the next 16th-note boundary. Assumes tempo is
-  // constant over the sub-second horizon, which holds in practice.
+  // AudioContext time of the next 16th-note boundary, or null when the
+  // timeline is stale (callers must fall back to immediate playback).
   quantizedTime(ctx, perfNow = performance.now()) {
+    if (this.stale || !this.state) return null;
     const beat = this.currentBeat(perfNow);
     const gridBeat = nextGridBeat(beat);
     const dtBeats = gridBeat - beat;
@@ -777,16 +864,25 @@ class LinkSync {
 }
 
 // The bridge exposes /link-info on the same origin it serves the app
-// from; the hosted Pages copy has no such endpoint, so the link key
-// only appears when the app is actually reachable through a bridge.
+// from (gated by the per-run key in the page URL); the hosted Pages
+// copy has no such endpoint, so the link key only appears when the app
+// is actually reachable through a bridge.
 async function probeBridge(timeoutMs = 900) {
   try {
-    const res = await fetch('/link-info', { signal: AbortSignal.timeout(timeoutMs) });
+    const key = new URLSearchParams(location.search).get('key');
+    const res = await fetch(`/link-info${key ? `?key=${key}` : ''}`, { signal: AbortSignal.timeout(timeoutMs) });
     if (!res.ok) return null;
     return await res.json();
   } catch {
     return null;
   }
+}
+
+// WebSocket URL for the bridge that served this page, carrying the
+// per-run access key from the page URL.
+function bridgeWsUrl() {
+  const key = new URLSearchParams(location.search).get('key');
+  return `ws://${location.host}/ws${key ? `?key=${key}` : ''}`;
 }
 
 
@@ -880,21 +976,29 @@ function play(freq, velocity = 1) {
   if (!app.audio) return;
   if (linkSync && linkSync.isOn) {
     const q = linkSync.quantizedTime(app.audio.ctx);
-    if (LINKTEST) (window.__QUANT = window.__QUANT || []).push(q);
-    app.audio.playAt(app.sound, freq, q.when, velocity);
-    return;
+    if (q) {
+      if (LINKTEST) (window.__QUANT = window.__QUANT || []).push(q);
+      app.audio.playAt(app.sound, freq, q.when, velocity);
+      return;
+    }
+    // stale timeline: fall through to immediate playback
   }
   app.audio.play(app.sound, freq, velocity);
 }
 
 // ---------- ableton link ----------
 
-function linkCaption(msg) {
-  const el = document.querySelector('#screen-caption .caption-right');
-  if (linkSync && linkSync.isOn && msg) {
+function updateLinkStatus(msg) {
+  const el = document.getElementById('link-status');
+  if (linkSync && linkSync.isOn && !linkSync.stale && msg) {
+    el.hidden = false;
     el.textContent = `link \u00b7 ${msg.bpm.toFixed(1)} bpm \u00b7 ${msg.peers + 1} peer${msg.peers ? 's' : ''}`;
+  } else if (linkSync && linkSync.stale) {
+    el.hidden = false;
+    el.textContent = 'link lost \u00b7 tap link to retry';
   } else {
-    el.textContent = 'audio out \u2192 mixer';
+    el.hidden = true;
+    el.textContent = '';
   }
 }
 
@@ -903,17 +1007,21 @@ function toggleLink() {
     linkSync.disconnect();
     linkSync = null;
     btnLink.classList.remove('active');
-    linkCaption(null);
+    updateLinkStatus(null);
     return;
   }
   linkSync = new LinkSync({
-    onState: linkCaption,
+    onState: updateLinkStatus,
     onStatus: (st) => {
       btnLink.classList.toggle('active', st === 'on');
-      if (st !== 'on') linkCaption(null);
+      if (st === 'stale') updateLinkStatus(null); // shows the link-lost hint
+      if (st === 'off') {
+        linkSync = null;
+        updateLinkStatus(null);
+      }
     },
   });
-  linkSync.connect(`ws://${location.host}/ws`);
+  linkSync.connect(bridgeWsUrl());
 }
 
 btnLink.addEventListener('click', toggleLink);
@@ -947,16 +1055,13 @@ function gridTriggerAt(x, y) {
 
 // ---------- controls ----------
 
-function key(label, num, active, onTap) {
+function key(label, active, onTap) {
   const b = document.createElement('button');
   b.className = `key${active ? ' active' : ''}`;
-  const n = document.createElement('span');
-  n.className = 'num';
-  n.textContent = num;
   const l = document.createElement('span');
   l.className = 'lbl';
   l.textContent = label;
-  b.append(n, l);
+  b.append(l);
   b.addEventListener('click', () => onTap(b));
   return b;
 }
@@ -993,8 +1098,8 @@ function param(label, get, set, step, lo, hi) {
 function buildControls() {
   const soundRow = document.getElementById('sound-keys');
   const soundButtons = new Map();
-  VOICES.forEach((v, i) => {
-    const b = key(v, String(i + 1).padStart(2, '0'), v === app.sound, () => {
+  VOICES.forEach((v) => {
+    const b = key(v, v === app.sound, () => {
       app.sound = v;
       for (const [name, btn] of soundButtons) btn.classList.toggle('active', name === v);
       if (app.audio) play(660); // audition the voice
@@ -1005,8 +1110,8 @@ function buildControls() {
 
   const scaleRow = document.getElementById('scale-keys');
   const scaleButtons = new Map();
-  SCALE_NAMES.forEach((s, i) => {
-    const b = key(s, String(i + 1).padStart(2, '0'), s === app.scale, () => {
+  SCALE_NAMES.forEach((s) => {
+    const b = key(s, s === app.scale, () => {
       app.scale = s;
       app.bounce.scale = s;
       for (const [name, btn] of scaleButtons) btn.classList.toggle('active', name === s);
@@ -1041,7 +1146,6 @@ function switchMode(mode) {
   document.querySelectorAll('.key-mode').forEach((d) => {
     d.classList.toggle('active', d.dataset.mode === mode);
   });
-  document.getElementById('caption-mode').textContent = mode;
   document.getElementById('panel-bounce').hidden = mode !== 'bounce';
   document.getElementById('panel-grid').hidden = mode !== 'grid';
 }
@@ -1059,7 +1163,7 @@ function frame(t) {
   c2d.fillStyle = BG;
   c2d.fillRect(0, 0, w, h);
 
-  if (linkSync && linkSync.isOn && linkSync.state) {
+  if (linkSync && linkSync.isOn && !linkSync.stale && linkSync.state) {
     const beatInt = Math.floor(linkSync.currentBeat());
     if (beatInt !== window.__lastBeatInt) {
       window.__lastBeatInt = beatInt;

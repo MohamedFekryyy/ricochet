@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { nextGridBeat, GRID_SUBDIVISION } from '../src/link.js';
+import { nextGridBeat, GRID_SUBDIVISION, OffsetEstimator } from '../src/link.js';
 
 test('a hit exactly on the grid stays on the grid', () => {
   assert.equal(nextGridBeat(0), 0);
@@ -20,4 +20,45 @@ test('quantized delay is never more than one subdivision', () => {
     const d = nextGridBeat(b) - b;
     assert.ok(d >= -1e-9 && d <= GRID_SUBDIVISION + 1e-9, `beat ${b} delay ${d}`);
   }
+});
+
+test('offset estimator recovers the true offset under symmetric delay', () => {
+  const est = new OffsetEstimator();
+  // client clock = server clock + 5000ms; network adds 30ms each way
+  for (let i = 0; i < 5; i++) {
+    const sentAt = 1000 + i * 1000; // client time
+    const serverTs = sentAt + 30 + 5000; // server stamps on receipt
+    const receivedAt = sentAt + 60; // reply takes another 30ms
+    est.addSample(sentAt, serverTs, receivedAt);
+  }
+  assert.ok(Math.abs(est.offset - 5000) < 1e-9, `offset ${est.offset}`);
+});
+
+test('min-RTT selection tolerates jitter and asymmetric spikes', () => {
+  const est = new OffsetEstimator();
+  const trueOffset = 5000;
+  // mostly 30ms symmetric, with two bad spikes
+  const delays = [[30, 30], [150, 40], [30, 90], [25, 25], [200, 200]];
+  let t = 1000;
+  for (const [up, down] of delays) {
+    const serverTs = t + up + trueOffset;
+    est.addSample(t, serverTs, t + up + down);
+    t += 1000;
+  }
+  // best sample is [25,25]: midpoint error 0
+  assert.ok(Math.abs(est.offset - trueOffset) <= 5, `offset ${est.offset}`);
+  assert.equal(est.bestRtt, 50);
+});
+
+test('offset is null before any sample', () => {
+  assert.equal(new OffsetEstimator().offset, null);
+});
+
+test('estimator window forgets stale samples', () => {
+  const est = new OffsetEstimator(3);
+  // three samples at offset 100 with big rtt
+  for (let i = 0; i < 3; i++) est.addSample(i * 1000, i * 1000 + 500 + 100, i * 1000 + 1000);
+  // then a good sample at the true offset 0
+  est.addSample(10000, 10010, 10020);
+  assert.ok(Math.abs(est.offset - 0) < 1e-9, `offset ${est.offset}`);
 });
