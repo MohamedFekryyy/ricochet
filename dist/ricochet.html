@@ -158,12 +158,6 @@ body {
 .plate { display: flex; flex-direction: column; align-items: center; }
 #overlay h1 { font-size: 24px; letter-spacing: 0.42em; margin: 0 0 4px; text-indent: 0.42em; }
 #overlay .tagline { font-size: 9px; letter-spacing: 0.22em; color: var(--ink-soft); margin: 0 0 26px; }
-#overlay .spec {
-  font-size: 8px; letter-spacing: 0.16em; color: var(--ink-soft);
-  border-top: 1px solid rgba(28, 28, 26, 0.25);
-  border-bottom: 1px solid rgba(28, 28, 26, 0.25);
-  padding: 7px 4px; margin-bottom: 30px;
-}
 .key-start {
   height: 46px; padding: 0 34px; font-size: 13px; letter-spacing: 0.24em;
   border-color: var(--accent);
@@ -199,7 +193,6 @@ body {
 
 <section id="controls" hidden>
   <div class="section">
-    <div class="section-label">mode</div>
     <div id="mode-keys">
       <button class="key key-mode active" data-mode="bounce"><span class="led"></span>bounce</button>
       <button class="key key-mode" data-mode="grid"><span class="led"></span>grid</button>
@@ -221,7 +214,6 @@ body {
   <div class="plate">
     <h1>ricochet</h1>
     <p class="tagline">pocket instrument &middot; mk i</p>
-    <div class="spec">2 engines &middot; 5 voices &middot; 3 scales &middot; web audio</div>
     <button id="btn-start" class="key key-start"><span class="led"></span>power</button>
     <p class="note">sound starts after your tap<br>plug audio out into your mixer</p>
   </div>

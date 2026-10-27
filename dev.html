@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#d6d4ce">
+<title>ricochet</title>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+
+<header id="hud" hidden>
+  <div id="brand">
+    <span class="name">ricochet</span>
+    <span class="sub">pocket instrument &middot; mk i</span>
+    <span id="link-status" role="status" aria-live="polite" hidden></span>
+  </div>
+  <div class="hud-buttons">
+    <button id="btn-link" class="key key-sm key-link" aria-label="Ableton Link sync" title="Ableton Link sync" hidden><span class="led"></span>link</button>
+    <button id="btn-pause" class="key key-sm" aria-label="Pause" title="Pause">&#10074;&#10074;</button>
+    <button id="btn-mute" class="key key-sm" aria-label="Mute" title="Mute">&#9834;</button>
+  </div>
+</header>
+
+<main id="screen" hidden>
+  <canvas id="stage"></canvas>
+</main>
+
+<section id="controls" hidden>
+  <div class="section">
+    <div id="mode-keys">
+      <button class="key key-mode active" data-mode="bounce"><span class="led"></span>bounce</button>
+      <button class="key key-mode" data-mode="grid"><span class="led"></span>grid</button>
+    </div>
+  </div>
+  <div id="panel-bounce" class="panel"></div>
+  <div id="panel-grid" class="panel" hidden></div>
+  <div class="section">
+    <div class="section-label">sound</div>
+    <div id="sound-keys" class="key-row"></div>
+  </div>
+  <div class="section">
+    <div class="section-label">scale</div>
+    <div id="scale-keys" class="key-row"></div>
+  </div>
+</section>
+
+<div id="overlay">
+  <div class="plate">
+    <h1>ricochet</h1>
+    <p class="tagline">pocket instrument &middot; mk i</p>
+    <button id="btn-start" class="key key-start"><span class="led"></span>power</button>
+    <p class="note">sound starts after your tap<br>plug audio out into your mixer</p>
+  </div>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
