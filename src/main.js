@@ -22,8 +22,8 @@ const SHOT = params.get('shot'); // 'bounce' | 'grid' for deterministic screensh
 
 const GRID_COLS = 10;
 const GRID_ROWS = 10;
-const BALL_COLORS = ['#ff3b30', '#f2f2f2', '#8e8e93'];
-const BG = '#050505';
+const BALL_COLORS = ['#ffb000', '#fff1d6', '#ff4d00'];
+const BG = '#0b0a08';
 
 const canvas = document.getElementById('stage');
 const c2d = canvas.getContext('2d');
@@ -57,7 +57,7 @@ const app = {
 // ---------- layout ----------
 
 function viewSize() {
-  return { w: window.innerWidth, h: window.innerHeight };
+  return { w: canvas.clientWidth || window.innerWidth, h: canvas.clientHeight || window.innerHeight };
 }
 
 function resize() {
@@ -65,8 +65,6 @@ function resize() {
   const dpr = Math.min(3, window.devicePixelRatio || 1);
   canvas.width = Math.round(w * dpr);
   canvas.height = Math.round(h * dpr);
-  canvas.style.width = `${w}px`;
-  canvas.style.height = `${h}px`;
   c2d.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (!app.bounce) {
     app.bounce = createBounceState({
@@ -83,8 +81,8 @@ function resize() {
 
 function gridRect() {
   const { w, h } = viewSize();
-  const side = Math.min(w, h * 0.62) * 0.86;
-  return { x: (w - side) / 2, y: h * 0.1, size: side };
+  const side = Math.min(w, h * 0.72) * 0.88;
+  return { x: (w - side) / 2, y: (h - side) * 0.45, size: side };
 }
 
 // ---------- sound ----------
@@ -118,94 +116,101 @@ function gridTriggerAt(x, y) {
 
 // ---------- controls ----------
 
-function pill(label, active, onTap) {
+function key(label, num, active, onTap) {
   const b = document.createElement('button');
-  b.className = `pill${active ? ' active' : ''}`;
-  b.textContent = label;
+  b.className = `key${active ? ' active' : ''}`;
+  const n = document.createElement('span');
+  n.className = 'num';
+  n.textContent = num;
+  const l = document.createElement('span');
+  l.className = 'lbl';
+  l.textContent = label;
+  b.append(n, l);
   b.addEventListener('click', () => onTap(b));
   return b;
 }
 
-function stepper(label, get, set, step, lo, hi) {
+function param(label, get, set, step, lo, hi) {
   const wrap = document.createElement('div');
-  wrap.className = 'stepper';
-  const name = document.createElement('span');
-  name.className = 'label';
+  wrap.className = 'param';
+  const name = document.createElement('div');
+  name.className = 'param-label';
   name.textContent = label;
+  const face = document.createElement('div');
+  face.className = 'param-face';
   const minus = document.createElement('button');
+  minus.className = 'key';
   minus.textContent = '−';
   const value = document.createElement('span');
-  value.className = 'value';
-  value.textContent = get();
+  value.className = 'lcd';
+  value.textContent = String(get()).padStart(2, '0');
   const plus = document.createElement('button');
+  plus.className = 'key';
   plus.textContent = '+';
   const update = (d) => {
     const v = Math.min(hi, Math.max(lo, get() + d));
     set(v);
-    value.textContent = get();
+    value.textContent = String(get()).padStart(2, '0');
   };
   minus.addEventListener('click', () => update(-step));
   plus.addEventListener('click', () => update(step));
-  wrap.append(name, minus, value, plus);
+  face.append(minus, value, plus);
+  wrap.append(name, face);
   return wrap;
 }
 
 function buildControls() {
-  const shared = document.getElementById('shared-rows');
-
-  const soundRow = document.createElement('div');
-  soundRow.className = 'row';
+  const soundRow = document.getElementById('sound-keys');
   const soundButtons = new Map();
-  for (const v of VOICES) {
-    const b = pill(v, v === app.sound, () => {
+  VOICES.forEach((v, i) => {
+    const b = key(v, String(i + 1).padStart(2, '0'), v === app.sound, () => {
       app.sound = v;
       for (const [name, btn] of soundButtons) btn.classList.toggle('active', name === v);
       if (app.audio) play(660); // audition the voice
     });
     soundButtons.set(v, b);
     soundRow.append(b);
-  }
+  });
 
-  const scaleRow = document.createElement('div');
-  scaleRow.className = 'row';
+  const scaleRow = document.getElementById('scale-keys');
   const scaleButtons = new Map();
-  for (const s of SCALE_NAMES) {
-    const b = pill(s, s === app.scale, () => {
+  SCALE_NAMES.forEach((s, i) => {
+    const b = key(s, String(i + 1).padStart(2, '0'), s === app.scale, () => {
       app.scale = s;
       app.bounce.scale = s;
       for (const [name, btn] of scaleButtons) btn.classList.toggle('active', name === s);
     });
     scaleButtons.set(s, b);
     scaleRow.append(b);
-  }
-  shared.append(soundRow, scaleRow);
+  });
 
   const bouncePanel = document.getElementById('panel-bounce');
-  const bounceSteppers = document.createElement('div');
-  bounceSteppers.className = 'steppers';
-  bounceSteppers.append(
-    stepper('corners', () => app.corners, (v) => { app.corners = v; setCorners(app.bounce, v); }, 1, ...LIMITS.corners),
-    stepper('speed', () => app.speed, (v) => { app.speed = v; setSpeed(app.bounce, v); }, 1, ...LIMITS.speed),
-    stepper('amount', () => app.amount, (v) => { app.amount = v; setAmount(app.bounce, v); }, 1, ...LIMITS.amount),
+  const bounceParams = document.createElement('div');
+  bounceParams.className = 'params';
+  bounceParams.append(
+    param('corners', () => app.corners, (v) => { app.corners = v; setCorners(app.bounce, v); }, 1, ...LIMITS.corners),
+    param('speed', () => app.speed, (v) => { app.speed = v; setSpeed(app.bounce, v); }, 1, ...LIMITS.speed),
+    param('amount', () => app.amount, (v) => { app.amount = v; setAmount(app.bounce, v); }, 1, ...LIMITS.amount),
   );
-  bouncePanel.append(bounceSteppers);
+  bouncePanel.append(bounceParams);
 
   const gridPanel = document.getElementById('panel-grid');
-  const gridSteppers = document.createElement('div');
-  gridSteppers.className = 'steppers';
-  gridSteppers.append(
-    stepper('sensitivity', () => app.grid.sensitivity,
+  const gridParams = document.createElement('div');
+  gridParams.className = 'params';
+  gridParams.append(
+    param('sensitivity', () => app.grid.sensitivity,
       (v) => { app.grid.sensitivity = v; app.grid.tracker.setSensitivity(v); }, 5, 0, 100),
-    stepper('size', () => app.grid.size, (v) => { app.grid.size = v; }, 1, 1, 3),
+    param('brush', () => app.grid.size, (v) => { app.grid.size = v; }, 1, 1, 3),
   );
-  gridPanel.append(gridSteppers);
+  gridPanel.append(gridParams);
 }
 
 function switchMode(mode) {
   app.mode = mode;
-  document.querySelectorAll('#mode-dots .dot').forEach((d) => {
+  document.querySelectorAll('.key-mode').forEach((d) => {
     d.classList.toggle('active', d.dataset.mode === mode);
   });
+  document.getElementById('caption-mode').textContent = mode;
   document.getElementById('panel-bounce').hidden = mode !== 'bounce';
   document.getElementById('panel-grid').hidden = mode !== 'grid';
 }
@@ -248,8 +253,8 @@ function drawBounce(dt) {
     const b = vertices[(i + 1) % vertices.length];
     const f = app.flashes.get(i) || 0;
     c2d.strokeStyle = f > 0.02
-      ? `rgba(255, 59, 48, ${0.25 + 0.75 * f})`
-      : 'rgba(242, 242, 242, 0.8)';
+      ? `rgba(255, 77, 0, ${0.25 + 0.75 * f})`
+      : 'rgba(255, 241, 214, 0.75)';
     c2d.lineWidth = f > 0.02 ? 2.5 : 1.5;
     c2d.beginPath();
     c2d.moveTo(a.x, a.y);
@@ -283,13 +288,13 @@ function drawGrid(now) {
         const k = 1 - age;
         c2d.beginPath();
         c2d.arc(cx, cy, cell * 0.16 + cell * 0.22 * k, 0, Math.PI * 2);
-        c2d.fillStyle = `rgba(255, 59, 48, ${0.25 + 0.75 * k})`;
+        c2d.fillStyle = `rgba(255, 77, 0, ${0.25 + 0.75 * k})`;
         c2d.fill();
       } else {
         if (t) app.grid.active.delete(key);
         c2d.beginPath();
         c2d.arc(cx, cy, 2.2, 0, Math.PI * 2);
-        c2d.fillStyle = 'rgba(242, 242, 242, 0.5)';
+        c2d.fillStyle = 'rgba(255, 176, 0, 0.28)';
         c2d.fill();
       }
     }
@@ -350,7 +355,7 @@ document.getElementById('btn-mute').addEventListener('click', (e) => {
   e.currentTarget.classList.toggle('off', app.audio.isMuted());
 });
 
-document.querySelectorAll('#mode-dots .dot').forEach((d) => {
+document.querySelectorAll('.key-mode').forEach((d) => {
   d.addEventListener('click', () => switchMode(d.dataset.mode));
 });
 
@@ -365,7 +370,11 @@ document.addEventListener('visibilitychange', () => {
 function showUI() {
   overlay.hidden = true;
   hud.hidden = false;
+  document.getElementById('screen').hidden = false;
   controls.hidden = false;
+  // the canvas was laid out while its screen frame was still hidden
+  // (client size 0), so re-measure now that it's visible.
+  requestAnimationFrame(resize);
 }
 
 function start(withAudio) {

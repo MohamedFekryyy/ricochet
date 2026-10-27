@@ -16,7 +16,11 @@ samples, no dependencies, and no build step needed to run it.
 ## Play it
 
 Open `index.html` in any modern browser (or serve the folder statically).
-Tap to start — browsers only allow audio after a gesture.
+Tap **power** to start — browsers only allow audio after a gesture.
+
+The interface is styled as a little hardware instrument: a recessed
+display on a field-grey body, raised keys, and LCD parameter readouts
+(see `docs/research.md` for the design grounding).
 
 For the single-file build (everything inlined into one HTML file you can
 send to a phone and open locally):
@@ -42,7 +46,7 @@ in the top bar. Audio suspends when the tab is hidden.
 ## Develop
 
 ```
-node --test test/      # 32 unit tests (physics, notes, engine, grid, audio buffer)
+npm test                # 32 unit tests (physics, notes, engine, grid, audio buffer)
 node scripts/build.mjs # bundle to a single HTML file
 node scripts/smoke.mjs # headless-Chrome functional test incl. real audio rendering
 node scripts/shots.mjs # phone-sized screenshots into docs/screenshots/
