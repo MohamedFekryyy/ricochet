@@ -94,3 +94,20 @@ export function setAmount(state, amount) {
   while (state.balls.length > target) state.balls.pop();
   return state;
 }
+
+// Advance the sim by `seconds` in fixed steps, returning every hit with
+// its time offset from the start of the window. Used by the background
+// scheduler, which books notes ahead of the AudioContext clock while
+// the tab is hidden (rAF is paused there, timers still run).
+export function bounceWindow(state, seconds, step = 1 / 120) {
+  const events = [];
+  let t = 0;
+  while (t < seconds - 1e-9) {
+    const dt = Math.min(step, seconds - t);
+    for (const ev of bounceStep(state, dt)) {
+      events.push({ t: t + dt / 2, edge: ev.edge, freq: ev.freq });
+    }
+    t += dt;
+  }
+  return events;
+}
