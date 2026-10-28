@@ -66,3 +66,34 @@ test('control values are clamped to their limits', () => {
   assert.equal(st.sides, LIMITS.corners[1]);
   assert.equal(st.speed, LIMITS.speed[0]);
 });
+
+test('bounceWindow books the same hits as per-frame stepping, with times', async () => {
+  const { bounceWindow } = await import('../src/engine.js');
+  const mk = () => createBounceState({ width: 390, height: 700, sides: 7, speed: 23, amount: 3 });
+  const a = mk();
+  const b = mk();
+  const windowed = bounceWindow(a, 3.0);
+  let stepped = 0;
+  for (let i = 0; i < 180; i++) stepped += bounceStep(b, 1 / 60).length;
+  assert.ok(Math.abs(windowed.length - stepped) <= 1,
+    `windowed ${windowed.length} vs stepped ${stepped}`);
+  let prev = -1;
+  for (const ev of windowed) {
+    assert.ok(ev.t >= 0 && ev.t <= 3.0, `t ${ev.t}`);
+    assert.ok(ev.t >= prev, 'events are time-ordered');
+    assert.ok(Number.isFinite(ev.freq) && ev.freq > 0);
+    prev = ev.t;
+  }
+});
+
+test('bounceWindow advances the sim like stepping does', async () => {
+  const { bounceWindow } = await import('../src/engine.js');
+  const a = createBounceState({ width: 390, height: 700, sides: 5, speed: 30, amount: 2 });
+  const b = createBounceState({ width: 390, height: 700, sides: 5, speed: 30, amount: 2 });
+  bounceWindow(a, 1.0);
+  for (let i = 0; i < 60; i++) bounceStep(b, 1 / 60);
+  for (let i = 0; i < a.balls.length; i++) {
+    assert.ok(Math.abs(a.balls[i].x - b.balls[i].x) < 1, `ball ${i} x drift`);
+    assert.ok(Math.abs(a.balls[i].y - b.balls[i].y) < 1, `ball ${i} y drift`);
+  }
+});

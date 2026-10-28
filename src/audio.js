@@ -117,6 +117,12 @@ export function scheduleVoice(ctx, dest, name, freq, when = ctx.currentTime, vel
 export function createAudio({ volume = 0.6 } = {}) {
   const AC = globalThis.AudioContext || globalThis.webkitAudioContext;
   if (!AC) throw new Error('Web Audio is not available in this browser');
+  // Ask the OS for a playback audio session so the page can keep
+  // sounding while hidden (honored by recent iOS Safari; a no-op
+  // elsewhere or where the API is absent).
+  if (typeof navigator !== 'undefined' && navigator.audioSession) {
+    try { navigator.audioSession.type = 'playback'; } catch { /* older engines */ }
+  }
   const ctx = new AC();
   const master = ctx.createGain();
   const comp = ctx.createDynamicsCompressor();

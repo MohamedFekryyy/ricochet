@@ -62,3 +62,50 @@ test('estimator window forgets stale samples', () => {
   est.addSample(10000, 10010, 10020);
   assert.ok(Math.abs(est.offset - 0) < 1e-9, `offset ${est.offset}`);
 });
+
+test('quantizeAt books a future hit onto the beat grid', async () => {
+  const { LinkSync } = await import('../src/link.js');
+  const l = new LinkSync({});
+  // 120 bpm = 2 beats/s; receipt-anchored timeline (no pong samples).
+  l.state = { bpm: 120, beat: 4, ts: 0, phase: 0, quantum: 4, peers: 0, playing: true };
+  l.recvPerf = performance.now();
+  const ctx = { currentTime: 10 };
+  const q = l.quantizeAt(ctx, 10.5);
+  // beat at ctx time 10.5 is beatNow + 1.0; the booking must land on a
+  // 16th boundary no earlier than that beat.
+  assert.ok(q.when >= 10.5 - 1e-9, `when ${q.when}`);
+  assert.ok(Math.abs(q.gridBeat / GRID_SUBDIVISION - Math.round(q.gridBeat / GRID_SUBDIVISION)) < 1e-9);
+  const beatNow = l.currentBeat();
+  const beatAt = beatNow + (10.5 - ctx.currentTime) * 2;
+  assert.ok(q.gridBeat >= beatAt - 1e-9);
+  assert.ok(q.gridBeat - beatAt <= GRID_SUBDIVISION + 1e-9);
+});
+
+test('quantizeAt honours the selected grid subdivision', async () => {
+  const { LinkSync } = await import('../src/link.js');
+  const l = new LinkSync({});
+  l.state = { bpm: 120, beat: 4, ts: 0, phase: 0, quantum: 4, peers: 0, playing: true };
+  l.recvPerf = performance.now();
+  const ctx = { currentTime: 10 };
+  const beatNow = l.currentBeat();
+  const beatAt = beatNow + (10.5 - ctx.currentTime) * 2;
+  for (const sub of [0.25, 0.5, 1]) {
+    const q = l.quantizeAt(ctx, 10.5, performance.now(), sub);
+    assert.ok(Math.abs(q.gridBeat / sub - Math.round(q.gridBeat / sub)) < 1e-9, `grid ${q.gridBeat} sub ${sub}`);
+    assert.ok(q.gridBeat >= beatAt - 1e-9);
+    assert.ok(q.gridBeat - beatAt <= sub + 1e-9, `delay ${q.gridBeat - beatAt} sub ${sub}`);
+  }
+  // a coarser grid books strictly further out (or equal) than a finer one
+  const fine = l.quantizeAt(ctx, 10.5, performance.now(), 0.25);
+  const coarse = l.quantizeAt(ctx, 10.5, performance.now(), 1);
+  assert.ok(coarse.gridBeat >= fine.gridBeat - 1e-9);
+});
+
+test('quantizeAt is null without a live timeline', async () => {
+  const { LinkSync } = await import('../src/link.js');
+  const l = new LinkSync({});
+  assert.equal(l.quantizeAt({ currentTime: 1 }, 2), null);
+  l.state = { bpm: 120, beat: 4, ts: 0, phase: 0, quantum: 4, peers: 0, playing: true };
+  l.stale = true;
+  assert.equal(l.quantizeAt({ currentTime: 1 }, 2), null);
+});

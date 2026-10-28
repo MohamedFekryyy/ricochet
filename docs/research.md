@@ -32,7 +32,12 @@ were taken from the creator.
 - **Output safety.** Master gain 0.6 into a compressor (threshold -6 dB,
   ratio 12:1), mute button, voice cap, and a tap-to-start overlay —
   browsers (iOS Safari especially) block audio before a user gesture
-  anyway. Audio suspends when the tab is hidden.
+  anyway. Hidden tabs get no rAF, so a timer-driven scheduler steps
+  the bounce sim and books notes ahead of the AudioContext clock
+  (lookahead clears the ~1/s hidden-timer clamp); the page also sets
+  navigator.audioSession.type = 'playback', which recent iOS Safari
+  honors for background Web Audio (WebKit bug 261554, fixed 2024-03).
+  Real-device background behavior on iOS remains unverified.
 - **Single-file distribution.** `scripts/build.mjs` inlines everything
   into `dist/ricochet.html`, matching how the original was shared (one
   self-contained HTML file). The dev version stays modular for tests.

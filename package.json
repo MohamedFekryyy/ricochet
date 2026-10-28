@@ -8,6 +8,7 @@
     "test": "node --test test/*.test.mjs",
     "build": "node scripts/build.mjs",
     "smoke": "node scripts/smoke.mjs",
+    "bg-smoke": "node scripts/bg-smoke.mjs",
     "shots": "node scripts/shots.mjs"
   }
 }

@@ -176,6 +176,22 @@ export class LinkSync {
       gridBeat,
     };
   }
+
+  // AudioContext time of the first grid boundary (sub beats apart) at
+  // or after the beat position that corresponds to `when` (itself an
+  // AudioContext time). The background scheduler books hits ahead of
+  // the clock, so it cannot use quantizedTime (which only quantizes
+  // "now").
+  quantizeAt(ctx, when, perfNow = performance.now(), sub = GRID_SUBDIVISION) {
+    if (this.stale || !this.state) return null;
+    const beatNow = this.currentBeat(perfNow);
+    const beatAt = beatNow + ((when - ctx.currentTime) * this.state.bpm) / 60;
+    const gridBeat = nextGridBeat(beatAt, sub);
+    return {
+      when: ctx.currentTime + ((gridBeat - beatNow) * 60) / this.state.bpm,
+      gridBeat,
+    };
+  }
 }
 
 // The bridge exposes /link-info on the same origin it serves the app

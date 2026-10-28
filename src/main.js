@@ -7,6 +7,7 @@ import {
   LIMITS,
   createBounceState,
   bounceStep,
+  bounceWindow,
   rebuildPolygon,
   setCorners,
   setSpeed,
@@ -55,6 +56,7 @@ const app = {
   },
   triggeredInSmoke: 0,
   hitCount: 0,
+  silentUntilCtx: 0,
 };
 
 let linkSync = null;
@@ -97,6 +99,22 @@ function gridRect() {
 // audible: random wall hits snapped to 16ths still sound random.
 const SYNC_GRIDS = [['1/16', 0.25], ['1/8', 0.5], ['1/4', 1]];
 const slotNotes = new Map(); // gridBeat -> Set of freqs already queued
+if (LINKTEST) window.__SYNCGRID = app.syncGrid;
+
+// Several hits landing in one grid slot would stack into a flam; play
+// each pitch once per slot. Returns false for a duplicate.
+function claimGridSlot(gridBeat, freq) {
+  const slot = Math.round(gridBeat * 1000);
+  let set = slotNotes.get(slot);
+  if (!set) {
+    set = new Set();
+    slotNotes.set(slot, set);
+    for (const k of slotNotes.keys()) if (k < slot - 8000) slotNotes.delete(k);
+  }
+  if (set.has(freq)) return false;
+  set.add(freq);
+  return true;
+}
 
 // Returns the delay in seconds until the note sounds (0 when immediate,
 // null when dropped as a duplicate in its grid slot).
@@ -106,17 +124,7 @@ function play(freq, velocity = 1) {
     const q = linkSync.quantizedTime(app.audio.ctx, performance.now(), app.syncGrid);
     if (q) {
       if (LINKTEST) (window.__QUANT = window.__QUANT || []).push(q);
-      // Several hits landing in one slot would stack into a flam; play
-      // each pitch once per slot.
-      const slot = Math.round(q.gridBeat * 1000);
-      let set = slotNotes.get(slot);
-      if (!set) {
-        set = new Set();
-        slotNotes.set(slot, set);
-        for (const k of slotNotes.keys()) if (k < slot - 8000) slotNotes.delete(k);
-      }
-      if (set.has(freq)) return null;
-      set.add(freq);
+      if (!claimGridSlot(q.gridBeat, freq)) return null;
       app.audio.playAt(app.sound, freq, q.when, velocity);
       return Math.max(0, q.when - app.audio.ctx.currentTime);
     }
@@ -270,6 +278,7 @@ function buildControls() {
   SYNC_GRIDS.forEach(([label, sub]) => {
     const b = key(label, sub === app.syncGrid, () => {
       app.syncGrid = sub;
+      if (LINKTEST) window.__SYNCGRID = sub;
       for (const [s, btn] of syncButtons) btn.classList.toggle('active', s === sub);
     });
     syncButtons.set(sub, b);
@@ -329,8 +338,12 @@ function frame(t) {
   }
 
   if (app.mode === 'bounce') {
-    if (!app.paused) {
+    if (!app.paused && !document.hidden) {
+      // Hits already booked by the background scheduler (up to
+      // silentUntilCtx) must not be replayed as the sim re-lives them.
+      const silent = app.audio && app.audio.ctx.currentTime < (app.silentUntilCtx || 0);
       for (const ev of bounceStep(app.bounce, dt)) {
+        if (silent) continue;
         app.hitCount += 1;
         const delay = play(ev.freq, 0.9);
         // Flash the wall when the note sounds, not when the ball hits,
@@ -472,10 +485,91 @@ document.querySelectorAll('.key-mode').forEach((d) => {
   d.addEventListener('click', () => switchMode(d.dataset.mode));
 });
 
+// ---------- background playback ----------
+// Hidden tabs get no rAF frames, so the visible loop cannot produce
+// notes there. While hidden, a timer keeps stepping the bounce sim and
+// books hits ahead of the AudioContext clock (Chrome clamps hidden-tab
+// timers to ~1/s, so the lookahead must clear a second with margin).
+// Flashes are a rendering concern and are skipped here; on return the
+// rAF loop picks the sim up exactly where the scheduler left it.
+
+const BG_LOOKAHEAD_S = 1.5;
+const BG_TICK_MS = 250;
+let bg = null; // { timer, anchorCtx, scheduled }
+
+window.__BG = { ticks: 0, booked: 0, lastWhen: 0, lookahead: BG_LOOKAHEAD_S };
+
+function scheduleNoteAt(freq, velocity, whenCtx) {
+  if (!app.audio) return;
+  window.__BG.booked += 1;
+  window.__BG.lastWhen = whenCtx;
+  if (linkSync && linkSync.isOn) {
+    const q = linkSync.quantizeAt(app.audio.ctx, whenCtx, performance.now(), app.syncGrid);
+    if (q) {
+      // Booked hits share the live grid and its per-slot dedupe, so
+      // hiding the tab does not change the groove.
+      if (!claimGridSlot(q.gridBeat, freq)) return;
+      app.audio.playAt(app.sound, freq, q.when, velocity);
+      return;
+    }
+  }
+  app.audio.playAt(app.sound, freq, whenCtx, velocity);
+}
+
+function bgTick() {
+  if (!bg || !app.audio) return;
+  const ctx = app.audio.ctx;
+  if (ctx.state !== 'running') return;
+  window.__BG.ticks += 1;
+  const target = (ctx.currentTime - bg.anchorCtx) + BG_LOOKAHEAD_S;
+  const span = target - bg.scheduled;
+  if (span <= 0) return;
+  for (const ev of bounceWindow(app.bounce, span)) {
+    const when = bg.anchorCtx + bg.scheduled + ev.t;
+    if (when < ctx.currentTime - 0.05) continue; // timer stalled; skip the gap
+    app.hitCount += 1;
+    scheduleNoteAt(ev.freq, 0.9, when);
+  }
+  bg.scheduled = target;
+}
+
+function startBackground() {
+  if (bg || !app.audio || app.paused || app.mode !== 'bounce') return;
+  if (app.audio.ctx.state !== 'running') return;
+  bg = {
+    anchorCtx: app.audio.ctx.currentTime + 0.1,
+    hiddenAtCtx: app.audio.ctx.currentTime,
+    scheduled: 0,
+    snapshot: app.bounce.balls.map((b) => ({ ...b })),
+  };
+  bg.timer = setInterval(bgTick, BG_TICK_MS);
+  bgTick();
+}
+
+function stopBackground() {
+  if (!bg) return;
+  clearInterval(bg.timer);
+  if (app.audio) {
+    const ctx = app.audio.ctx;
+    // The scheduler stepped the shared sim up to a lookahead into the
+    // future and booked those notes. Rewind to the pre-hidden snapshot
+    // and silently re-step the elapsed stretch (its notes are already
+    // booked), so ball visuals and sound stay glued together.
+    app.bounce.balls.forEach((b, i) => Object.assign(b, bg.snapshot[i] || b));
+    const elapsed = Math.max(0, ctx.currentTime - bg.hiddenAtCtx);
+    if (elapsed > 0) bounceWindow(app.bounce, elapsed);
+    app.silentUntilCtx = bg.anchorCtx + bg.scheduled;
+  }
+  bg = null;
+}
+
 document.addEventListener('visibilitychange', () => {
   if (!app.audio) return;
-  if (document.hidden) app.audio.suspend();
-  else app.audio.resume();
+  if (document.hidden) startBackground();
+  else {
+    stopBackground();
+    app.audio.resume(); // best effort; iOS may have interrupted the context
+  }
 });
 
 // ---------- startup ----------

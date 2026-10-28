@@ -115,13 +115,14 @@ try {
   await sleep(4000);
   const q = await ev(`window.__QUANT || []`);
   ok('bounce hits were scheduled through the link clock', q.length > 0, `${q.length} notes`);
-  const sub = 0.25;
+  const sub = 0.25; // every selectable grid (1/16, 1/8, 1/4) is a multiple of a 16th
   const offGrid = q.filter((x) => Math.abs(x.gridBeat / sub - Math.round(x.gridBeat / sub)) > 1e-6);
   ok('every note lands exactly on a 16th grid point', offGrid.length === 0, `${offGrid.length} off-grid`);
   const tooLate = q.filter((x) => x.gridBeat < x.beat - 1e-6);
   ok('no note is scheduled in the past', tooLate.length === 0);
-  const far = q.filter((x) => x.gridBeat - x.beat > sub + 1e-6);
-  ok('max quantization delay is one 16th', far.length === 0);
+  const sel = await ev('window.__SYNCGRID || 0.25');
+  const far = q.filter((x) => x.gridBeat - x.beat > sel + 1e-6);
+  ok(`max quantization delay is one slot of the selected grid (${sel} beats)`, far.length === 0);
 
   // beat indicator pulses at 120 bpm (beat every 500ms)
   const pulses = await ev(`new Promise((res) => { let n = 0; const b = document.getElementById('btn-link');
