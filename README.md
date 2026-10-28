@@ -56,7 +56,8 @@ is best-effort; sound resumes on its own when you return to the tab.
 
 A companion bridge (`link/bridge.py`) joins an Ableton Link session on
 your wifi and relays tempo/beat/phase to the app; notes are quantized
-onto the shared 16th-note grid. Run it on the Mac that runs Live, open
+onto the shared beat grid (1/16, 1/8 or 1/4, selectable with the **sync
+grid** keys, default 1/8). Run it on the Mac that runs Live, open
 the printed access URL (it carries a per-run key) on your phone, and tap
 the **link** key. Browsers can't join Link directly (no UDP in the web
 platform), which is why the bridge exists. Experimental: verified

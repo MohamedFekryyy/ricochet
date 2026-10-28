@@ -165,10 +165,10 @@ export class LinkSync {
 
   // AudioContext time of the next 16th-note boundary, or null when the
   // timeline is stale (callers must fall back to immediate playback).
-  quantizedTime(ctx, perfNow = performance.now()) {
+  quantizedTime(ctx, perfNow = performance.now(), sub = GRID_SUBDIVISION) {
     if (this.stale || !this.state) return null;
     const beat = this.currentBeat(perfNow);
-    const gridBeat = nextGridBeat(beat);
+    const gridBeat = nextGridBeat(beat, sub);
     const dtBeats = gridBeat - beat;
     return {
       when: ctx.currentTime + (dtBeats * 60) / this.state.bpm,
@@ -177,15 +177,16 @@ export class LinkSync {
     };
   }
 
-  // AudioContext time of the first 16th-note boundary at or after the
-  // beat position that corresponds to `when` (itself an AudioContext
-  // time). The background scheduler books hits ahead of the clock, so
-  // it cannot use quantizedTime (which only quantizes "now").
-  quantizeAt(ctx, when, perfNow = performance.now()) {
+  // AudioContext time of the first grid boundary (sub beats apart) at
+  // or after the beat position that corresponds to `when` (itself an
+  // AudioContext time). The background scheduler books hits ahead of
+  // the clock, so it cannot use quantizedTime (which only quantizes
+  // "now").
+  quantizeAt(ctx, when, perfNow = performance.now(), sub = GRID_SUBDIVISION) {
     if (this.stale || !this.state) return null;
     const beatNow = this.currentBeat(perfNow);
     const beatAt = beatNow + ((when - ctx.currentTime) * this.state.bpm) / 60;
-    const gridBeat = nextGridBeat(beatAt);
+    const gridBeat = nextGridBeat(beatAt, sub);
     return {
       when: ctx.currentTime + ((gridBeat - beatNow) * 60) / this.state.bpm,
       gridBeat,

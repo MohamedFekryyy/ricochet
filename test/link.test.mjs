@@ -81,6 +81,26 @@ test('quantizeAt books a future hit onto the beat grid', async () => {
   assert.ok(q.gridBeat - beatAt <= GRID_SUBDIVISION + 1e-9);
 });
 
+test('quantizeAt honours the selected grid subdivision', async () => {
+  const { LinkSync } = await import('../src/link.js');
+  const l = new LinkSync({});
+  l.state = { bpm: 120, beat: 4, ts: 0, phase: 0, quantum: 4, peers: 0, playing: true };
+  l.recvPerf = performance.now();
+  const ctx = { currentTime: 10 };
+  const beatNow = l.currentBeat();
+  const beatAt = beatNow + (10.5 - ctx.currentTime) * 2;
+  for (const sub of [0.25, 0.5, 1]) {
+    const q = l.quantizeAt(ctx, 10.5, performance.now(), sub);
+    assert.ok(Math.abs(q.gridBeat / sub - Math.round(q.gridBeat / sub)) < 1e-9, `grid ${q.gridBeat} sub ${sub}`);
+    assert.ok(q.gridBeat >= beatAt - 1e-9);
+    assert.ok(q.gridBeat - beatAt <= sub + 1e-9, `delay ${q.gridBeat - beatAt} sub ${sub}`);
+  }
+  // a coarser grid books strictly further out (or equal) than a finer one
+  const fine = l.quantizeAt(ctx, 10.5, performance.now(), 0.25);
+  const coarse = l.quantizeAt(ctx, 10.5, performance.now(), 1);
+  assert.ok(coarse.gridBeat >= fine.gridBeat - 1e-9);
+});
+
 test('quantizeAt is null without a live timeline', async () => {
   const { LinkSync } = await import('../src/link.js');
   const l = new LinkSync({});
